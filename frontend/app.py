@@ -108,16 +108,6 @@ with col_input:
         disabled=not ready_to_screen,
     )
 
-with col_results:
-    st.subheader("📊 Screening Results")
-
-    if screen_btn and ready_to_screen:
-        with st.spinner("Running deep document verification..."):
-            results = _run_screening(doc_type, inputs, live_face)
-
-        _display_results(results)
-    else:
-        st.info("Complete the camera scans on the left and tap **Screen Traveler Documents** to begin.")
 
 
 # ── Screening orchestrator ─────────────────────────────────────────────────────
@@ -436,3 +426,18 @@ def _display_results(results: dict):
                 for k, v in mrz.items():
                     if k not in ('check_digits', 'raw') and v:
                         st.text(f"{k.replace('_', ' ').title()}: {v}")
+
+
+# ── Render results column ──────────────────────────────────────────────────────
+
+with col_results:
+    st.subheader("📊 Screening Results")
+
+    if screen_btn and ready_to_screen:
+        with st.spinner("Running deep document verification..."):
+            results = _run_screening(doc_type, inputs, live_face)
+
+        _display_results(results)
+    else:
+        st.info("Complete the camera scans on the left and tap **Screen Traveler Documents** to begin.")
+
