@@ -1,5 +1,5 @@
 """
-Visa OCR — Extract fields from visa sticker stamp image.
+Visa OCR  -  Extract fields from visa sticker stamp image.
 
 Extracts:
   - Visa number

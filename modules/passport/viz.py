@@ -1,5 +1,5 @@
 """
-Passport VIZ OCR — Visual Inspection Zone extraction.
+Passport VIZ OCR  -  Visual Inspection Zone extraction.
 
 Extracts biographical fields from the printed data page of a passport
 using EasyOCR. The VIZ is cross-checked against MRZ fields to detect

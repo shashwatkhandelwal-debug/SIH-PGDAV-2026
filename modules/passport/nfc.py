@@ -1,5 +1,5 @@
 """
-NFC BAC (Basic Access Control) Handshake — ICAO 9303 Part 11.
+NFC BAC (Basic Access Control) Handshake  -  ICAO 9303 Part 11.
 
 Establishes an authenticated, encrypted NFC session with an e-passport chip
 using the MRZ data as the access key. Only someone holding the physical
@@ -40,7 +40,7 @@ def derive_bac_keys(mrz_line2: str) -> tuple[bytes, bytes]:
         mrz_line2: 44-character MRZ line 2 string.
 
     Returns:
-        Tuple of (K_enc, K_mac) — each 16 bytes (adjusted for 3DES parity).
+        Tuple of (K_enc, K_mac)  -  each 16 bytes (adjusted for 3DES parity).
     """
     # Extract the 24-char MRZ_information block
     mrz_info = mrz_line2[0:10] + mrz_line2[13:20] + mrz_line2[21:28]
@@ -71,7 +71,7 @@ def perform_bac(mrz_line2: str, clf=None) -> dict:
     if not _NFC_AVAILABLE:
         return {
             "success": False,
-            "error": "nfcpy not installed — NFC unavailable",
+            "error": "nfcpy not installed  -  NFC unavailable",
             "ks_enc": None, "ks_mac": None, "ssc": None,
         }
 
@@ -82,7 +82,7 @@ def perform_bac(mrz_line2: str, clf=None) -> dict:
         AID = bytes.fromhex('A0000002471001')
         _send_apdu(clf, [0x00, 0xA4, 0x04, 0x0C, len(AID)] + list(AID))
 
-        # Step 2: GET CHALLENGE — receive 8-byte nonce from chip
+        # Step 2: GET CHALLENGE  -  receive 8-byte nonce from chip
         resp = _send_apdu(clf, [0x00, 0x84, 0x00, 0x00, 0x08])
         rnd_ic = bytes(resp[:8])
 
@@ -109,7 +109,7 @@ def perform_bac(mrz_line2: str, clf=None) -> dict:
         k_ic = decrypted[16:32]
 
         if rnd_ifd_back != rnd_ifd:
-            return {"success": False, "error": "BAC mutual auth failed — RND_IFD mismatch",
+            return {"success": False, "error": "BAC mutual auth failed  -  RND_IFD mismatch",
                     "ks_enc": None, "ks_mac": None, "ssc": None}
 
         # Step 7: Derive session keys

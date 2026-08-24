@@ -1,13 +1,13 @@
 """
-Active Authentication — ICAO 9303 Part 11.
+Active Authentication  -  ICAO 9303 Part 11.
 
-Proves the physical chip is the ORIGINAL chip — not a clone.
+Proves the physical chip is the ORIGINAL chip  -  not a clone.
 
 How cloning is stopped:
   During chip manufacturing, the chip generates an RSA key pair internally.
   The public key is stored in DG15 (authenticated by Passive Auth).
   The private key is stored in tamper-resistant secure enclave hardware and
-  NEVER exposed via any APDU command — it can only be USED to sign data.
+  NEVER exposed via any APDU command  -  it can only be USED to sign data.
 
   A chip clone can copy every data group byte-for-byte, but cannot copy
   the private key. When the terminal sends a random challenge and asks the
@@ -46,8 +46,8 @@ def perform_active_auth(chip_dg15: bytes, clf=None) -> dict:
 
     Returns:
         dict with keys:
-          valid (bool)       — True if chip answered correctly (original chip)
-          challenge (bytes)  — The random nonce sent to the chip
+          valid (bool)        -  True if chip answered correctly (original chip)
+          challenge (bytes)   -  The random nonce sent to the chip
           error (str|None)
     """
     if not _CRYPTO_AVAILABLE:
@@ -56,7 +56,7 @@ def perform_active_auth(chip_dg15: bytes, clf=None) -> dict:
     if clf is None:
         return {
             "valid": None,
-            "error": "NFC hardware not available — Active Auth skipped",
+            "error": "NFC hardware not available  -  Active Auth skipped",
             "challenge": None,
         }
 
@@ -88,7 +88,7 @@ def perform_active_auth(chip_dg15: bytes, clf=None) -> dict:
             return {
                 "valid": False,
                 "challenge": challenge.hex(),
-                "error": "Active Auth failed — chip could not answer challenge. Possible cloned chip.",
+                "error": "Active Auth failed  -  chip could not answer challenge. Possible cloned chip.",
             }
 
     except Exception as e:

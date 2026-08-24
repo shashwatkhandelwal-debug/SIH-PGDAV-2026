@@ -8,7 +8,7 @@ Algorithm: RSA-2048 with PKCS#1 v1.5 padding and SHA-256 digest.
 
 UIDAI certificate source:
   https://resident.uidai.gov.in/uidai_qr_offline_cert
-  (Bundle the .cer/.pem file locally — see shared/certs/)
+  (Bundle the .cer/.pem file locally  -  see shared/certs/)
 """
 import os
 from cryptography.hazmat.primitives import hashes
@@ -59,7 +59,7 @@ def verify_uidai_signature(raw_payload: bytes, signature: bytes) -> dict:
         )
         return {"valid": True, "error": None, "cert_expired": False}
     except InvalidSignature:
-        return {"valid": False, "error": "Signature mismatch — QR data not issued by UIDAI", "cert_expired": False}
+        return {"valid": False, "error": "Signature mismatch  -  QR data not issued by UIDAI", "cert_expired": False}
     except Exception as e:
         return {"valid": False, "error": f"Verification error: {e}", "cert_expired": False}
 

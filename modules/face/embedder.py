@@ -12,12 +12,12 @@ Cosine similarity is used for comparison (equivalent to dot product
 on unit vectors).
 
 Why ArcFace:
-  Standard softmax loss trains for classification — it separates N known
+  Standard softmax loss trains for classification  -  it separates N known
   identities but doesn't maximize inter-class margins. ArcFace adds an
   additive angular margin penalty (m ≈ 0.5 radians) to the target angle in
   the softmax, producing tighter intra-class clusters and wider inter-class
   separation in the embedding space. This gives better verification accuracy
-  on unseen identities — which is the entire use case here (inference only).
+  on unseen identities  -  which is the entire use case here (inference only).
 """
 import numpy as np
 from typing import Optional
@@ -28,7 +28,7 @@ try:
 except ImportError:
     _DEEPFACE_AVAILABLE = False
 
-# Preferred model — change to 'Facenet512' if insightface fails to install
+# Preferred model  -  change to 'Facenet512' if insightface fails to install
 _MODEL_NAME = 'ArcFace'
 _BACKEND    = 'retinaface'   # Best face detector; fallback: 'opencv'
 
@@ -42,7 +42,7 @@ def get_embedding(image: np.ndarray) -> Optional[np.ndarray]:
                DeepFace will detect and align the face internally.
 
     Returns:
-        512-dim numpy float32 array (unit vector), or None if no face detected.
+        512-dim numpy float32 array (unit vector) or None if no face detected.
     """
     if not _DEEPFACE_AVAILABLE:
         return None

@@ -1,5 +1,5 @@
 """
-Passive Authentication — ICAO 9303 Part 11.
+Passive Authentication  -  ICAO 9303 Part 11.
 
 Verifies that the chip's stored data groups have not been altered since
 the passport was issued by the country's government.
@@ -54,9 +54,9 @@ def perform_passive_auth(chip_data: dict) -> dict:
     Returns:
         dict with keys:
           valid (bool)
-          chain_valid (bool)     — DSC chains to a trusted CSCA
-          dg_hashes_valid (bool) — all DG hashes match SOD
-          failed_dgs (list[int]) — data groups with hash mismatches
+          chain_valid (bool)      -  DSC chains to a trusted CSCA
+          dg_hashes_valid (bool)  -  all DG hashes match SOD
+          failed_dgs (list[int])  -  data groups with hash mismatches
           error (str|None)
     """
     if not _CRYPTO_AVAILABLE:
@@ -138,7 +138,7 @@ def _verify_cert_chain(dsc: 'x509.Certificate') -> bool:
     """
     csca_certs = _load_master_list_certs()
     if not csca_certs:
-        return False  # No master list available — cannot verify
+        return False  # No master list available  -  cannot verify
 
     for csca in csca_certs:
         try:

@@ -31,7 +31,7 @@ def check_qr_ocr_consistency(qr_fields: dict, ocr_fields: dict) -> dict:
     mismatches = []
     details = {}
 
-    # 1. Name match (fuzzy — OCR errors expected)
+    # 1. Name match (fuzzy  -  OCR errors expected)
     name_result = _compare_name(
         qr_fields.get('name'), ocr_fields.get('name_en')
     )
@@ -114,5 +114,5 @@ def _normalize_date(date_str: str) -> str:
     import re
     digits = re.sub(r'\D', '', date_str)
     if len(digits) == 8:
-        return digits  # Already DDMMYYYY or YYYYMMDD — further parsing if needed
+        return digits  # Already DDMMYYYY or YYYYMMDD  -  further parsing if needed
     return digits

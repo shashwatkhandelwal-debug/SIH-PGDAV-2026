@@ -2,15 +2,18 @@
 Document Quality Pre-Check.
 
 Validates that an image meets minimum quality requirements before
-running OCR or forensics. Prevents silent garbage-output from blurry
+running OCR or forensics. Prevents silent errors from blurry
 or low-resolution inputs.
 """
 import cv2
 import numpy as np
 
+# Minimum resolution boundaries (orientation independent)
+MIN_LONG_EDGE = 300
+MIN_SHORT_EDGE = 200
 
-MIN_RESOLUTION = (400, 300)   # Minimum width × height in pixels
-BLUR_THRESHOLD = 80.0         # Laplacian variance below this = blurry
+# Laplacian variance threshold
+BLUR_THRESHOLD = 15.0
 
 
 def check_quality(image: np.ndarray) -> dict:
@@ -24,21 +27,29 @@ def check_quality(image: np.ndarray) -> dict:
         dict with keys:
           acceptable (bool)
           issues     (list[str])
-          blur_score (float)   — higher is sharper
-          resolution (tuple)   — (width, height)
+          blur_score (float)
+          resolution (tuple)
     """
     issues = []
     h, w = image.shape[:2]
 
-    # Resolution check
-    if w < MIN_RESOLUTION[0] or h < MIN_RESOLUTION[1]:
-        issues.append(f"Resolution too low: {w}×{h}px (minimum {MIN_RESOLUTION[0]}×{MIN_RESOLUTION[1]}px)")
+    # Orientation-independent resolution check
+    long_edge = max(w, h)
+    short_edge = min(w, h)
+
+    if long_edge < MIN_LONG_EDGE or short_edge < MIN_SHORT_EDGE:
+        issues.append(
+            f"Resolution too low: {w}x{h}px. "
+            f"Requires at least {MIN_LONG_EDGE}px on the long edge and {MIN_SHORT_EDGE}px on the short edge."
+        )
 
     # Blur check (Laplacian variance)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blur_score = float(cv2.Laplacian(gray, cv2.CV_64F).var())
     if blur_score < BLUR_THRESHOLD:
-        issues.append(f"Image too blurry (sharpness score: {blur_score:.1f}, minimum: {BLUR_THRESHOLD})")
+        issues.append(
+            f"Image too blurry (sharpness score: {blur_score:.1f}, minimum required: {BLUR_THRESHOLD:.1f})"
+        )
 
     return {
         "acceptable": len(issues) == 0,

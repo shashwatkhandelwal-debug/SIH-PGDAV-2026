@@ -2,7 +2,7 @@
 LLM Plain-Language Summary Generator.
 
 Translates structured check results into one concise sentence
-for the border officer — focusing only on the most critical finding.
+for the border officer  -  focusing only on the most critical finding.
 
 Uses Google Gemini Flash (fast, low-latency, sufficient for this task).
 Falls back to a rule-based template summary if the API call fails.
@@ -70,15 +70,15 @@ Do not use technical jargon. Do not list all checks. Focus on the single most im
 # ── Rule-based fallback ────────────────────────────────────────────────────────
 
 _CRITICAL_CHECK_MESSAGES = {
-    "aadhaar_uidai_signature":    "Aadhaar QR signature invalid — document not issued by UIDAI.",
-    "passport_passive_auth":      "Passport chip data cannot be verified against ICAO — possible tampering.",
-    "passport_active_auth":       "Passport chip failed anti-clone check — possible cloned chip.",
-    "face_match":                 "Face does not match document photo — possible identity mismatch.",
-    "visa_passport_binding":      "Visa is not issued for this passport — possible document swap.",
-    "aadhaar_qr_ocr_consistency": "Aadhaar printed name does not match QR data — possible card alteration.",
+    "aadhaar_uidai_signature":    "Aadhaar QR signature invalid  -  document not issued by UIDAI.",
+    "passport_passive_auth":      "Passport chip data cannot be verified against ICAO  -  possible tampering.",
+    "passport_active_auth":       "Passport chip failed anti-clone check  -  possible cloned chip.",
+    "face_match":                 "Face does not match document photo  -  possible identity mismatch.",
+    "visa_passport_binding":      "Visa is not issued for this passport  -  possible document swap.",
+    "aadhaar_qr_ocr_consistency": "Aadhaar printed name does not match QR data  -  possible card alteration.",
     "passport_mrz_viz_consistency": "Passport MRZ and biographical page data do not match.",
     "expiry_valid":               "Document is expired.",
-    "liveness":                   "Liveness check failed — possible photo presentation attack.",
+    "liveness":                   "Liveness check failed  -  possible photo presentation attack.",
 }
 
 
@@ -87,7 +87,7 @@ def _rule_based_summary(score_result: dict) -> str:
     risk   = score_result.get('risk_level', 'PASS')
 
     if risk == 'PASS':
-        return "All checks passed — document appears genuine, proceed normally."
+        return "All checks passed  -  document appears genuine, proceed normally."
 
     # Find highest-weight failed check
     from modules.decision.scorer import WEIGHTS
@@ -98,4 +98,4 @@ def _rule_based_summary(score_result: dict) -> str:
         msg = _CRITICAL_CHECK_MESSAGES.get(top_fail, f"Check '{top_fail}' failed.")
         return f"{msg} Recommend manual secondary inspection."
 
-    return f"Risk level {risk} — multiple anomalies detected, recommend manual review."
+    return f"Risk level {risk}  -  multiple anomalies detected, recommend manual review."

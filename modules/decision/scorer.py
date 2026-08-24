@@ -1,125 +1,109 @@
 """
-Decision Scorer — Explainable Weighted Risk Score.
+Decision Scorer - Risk assessment calculations.
 
-Aggregates all module check results into a single risk score (0–100).
-Higher score = lower risk (PASS). Lower score = higher risk (FAIL).
-
-Design principle: Deliberately NOT a black-box ML model.
-Every weight is justified by the cryptographic strength of the underlying
-check, allowing a border security officer to trace exactly why a document
-was flagged and defend that decision to a supervisor.
+This module computes the final risk score based on checksum validation,
+signature verification, cross field consistency and ELA forensics.
 """
 from typing import Any
 
-# ── Weight table ───────────────────────────────────────────────────────────────
-# Total weights sum to 100. Each check contributes its weight × score (0–1).
-# score=1.0  → check passed
-# score=0.5  → check uncertain / not run / timed out
-# score=0.0  → check failed
-
-WEIGHTS = {
-    # Aadhaar
-    "aadhaar_uidai_signature":   20,   # Cryptographic proof of UIDAI issuance
-    "aadhaar_verhoeff":           5,   # Format correctness (mathematical)
-    "aadhaar_qr_ocr_consistency": 7,   # Copy-paste attack defense
-
-    # Passport
-    "passport_passive_auth":     20,   # Cryptographic proof of chip integrity
-    "passport_active_auth":      15,   # Anti-cloning proof
-    "passport_mrz_checksums":     8,   # ICAO format correctness
-    "passport_mrz_viz_consistency": 5, # Cross-source consistency
-
-    # Visa
-    "visa_passport_binding":      5,   # Cross-document binding
-    "visa_rule_validation":       3,   # Logical consistency
-
-    # Face
-    "face_match":                 7,   # Identity binding (doc photo vs live)
-    "liveness":                   3,   # Anti-spoofing
-
-    # Forensics
-    "ela_full_document":          1,   # Forensic signal
-    "ela_region_restricted":      1,   # Forensic signal (localized)
-    "exif_inspection":            1,   # Forensic signal
-
-    # Basic validity
-    "expiry_valid":               1,   # Document not expired (baseline)
-}
-
-assert sum(WEIGHTS.values()) == 102, "Weights should sum to 100 (adjust as needed)"
-
-# Risk thresholds
-RISK_LEVELS = {
-    "HIGH":   (0,  30),
-    "MEDIUM": (30, 60),
-    "LOW":    (60, 80),
-    "PASS":   (80, 101),
-}
+# ELA normalization threshold constant.
+# This value was tuned against sample_data to separate authentic images
+# from spliced regions.
+ELA_NORMALIZATION_THRESHOLD = 15.0
 
 
 def compute_score(check_results: dict[str, Any]) -> dict:
     """
-    Compute the weighted risk score from all check results.
+    Compute the risk score (0 to 100) based on checked fields.
 
-    Args:
-        check_results: Dict mapping check_name → result dict.
-                       Each result dict must have 'score' (float 0–1)
-                       and optionally 'status' (str).
-
-    Returns:
-        dict with keys:
-          total_score  (float 0–100)
-          risk_level   (str: HIGH|MEDIUM|LOW|PASS)
-          breakdown    (dict: check_name → {score, weight, contribution})
-          failed_checks (list[str])
-          uncertain_checks (list[str])
+    Higher score means higher risk.
     """
-    breakdown = {}
-    failed = []
-    uncertain = []
-    total = 0.0
-    weight_used = 0.0
+    # 1. Checksum Failure
+    checksum_fail = 0.0
+    if "aadhaar_verhoeff" in check_results:
+        res = check_results["aadhaar_verhoeff"]
+        if res is not None and res.get("score") == 0.0:
+            checksum_fail = 1.0
+    elif "passport_mrz_checksums" in check_results:
+        res = check_results["passport_mrz_checksums"]
+        if res is not None and res.get("score") == 0.0:
+            checksum_fail = 1.0
 
-    for check_name, weight in WEIGHTS.items():
-        result = check_results.get(check_name)
+    # 2. Signature Failure
+    signature_fail = 0.0
+    if "aadhaar_uidai_signature" in check_results:
+        res = check_results["aadhaar_uidai_signature"]
+        if res is not None and res.get("score") == 0.0:
+            signature_fail = 1.0
+    elif "passport_passive_auth" in check_results or "passport_active_auth" in check_results:
+        pa = check_results.get("passport_passive_auth")
+        aa = check_results.get("passport_active_auth")
+        pa_score = pa.get("score") if isinstance(pa, dict) else None
+        aa_score = aa.get("score") if isinstance(aa, dict) else None
+        if pa_score == 0.0 or aa_score == 0.0:
+            signature_fail = 1.0
 
-        if result is None:
-            score = 0.5  # Not run → uncertain
-            uncertain.append(check_name)
-        else:
-            score = float(result.get('score', 0.5))
-            if score == 0.0:
-                failed.append(check_name)
-            elif score < 0.8:
-                uncertain.append(check_name)
+    # 3. Cross-field Inconsistency
+    cross_field_inconsistent = 0.0
+    for key in ["aadhaar_qr_ocr_consistency", "passport_mrz_viz_consistency", "visa_passport_binding"]:
+        if key in check_results:
+            res = check_results[key]
+            if res is not None and res.get("score") == 0.0:
+                cross_field_inconsistent = 1.0
+                break
 
-        contribution = weight * score
-        total += contribution
-        weight_used += weight
+    # 4. ELA Anomaly Normalized
+    ela_variance = 0.0
+    ela_res = check_results.get("ela_full_document")
+    if isinstance(ela_res, dict):
+        ela_variance = float(ela_res.get("mean_variance", 0.0))
+    elif "ela_region_restricted" in check_results:
+        reg_res = check_results["ela_region_restricted"]
+        if isinstance(reg_res, dict):
+            ela_variance = float(reg_res.get("mean_variance", 0.0))
 
-        breakdown[check_name] = {
-            "score": score,
-            "weight": weight,
-            "contribution": round(contribution, 2),
-        }
+    ela_anomaly_normalized = min(1.0, ela_variance / ELA_NORMALIZATION_THRESHOLD)
 
-    # Normalize to 0–100
-    max_possible = sum(WEIGHTS.values())
-    normalized = (total / max_possible) * 100
+    # Compute individual risk terms
+    term_checksum = 30.0 * checksum_fail
+    term_signature = 30.0 * signature_fail
+    term_consistency = 20.0 * cross_field_inconsistent
+    term_ela = 20.0 * ela_anomaly_normalized
 
-    risk_level = _get_risk_level(normalized)
+    raw_score = term_checksum + term_signature + term_consistency + term_ela
+    overall_score = min(100.0, max(0.0, raw_score))
 
-    return {
-        "total_score": round(normalized, 1),
-        "risk_level": risk_level,
-        "breakdown": breakdown,
-        "failed_checks": failed,
-        "uncertain_checks": uncertain,
+    # Determine status based on thresholds
+    if overall_score <= 30.0:
+        status = "CLEAR"
+    elif overall_score <= 60.0:
+        status = "REVIEW"
+    else:
+        status = "FLAGGED"
+
+    component_breakdown = {
+        "checksum_contribution": round(term_checksum, 2),
+        "signature_contribution": round(term_signature, 2),
+        "consistency_contribution": round(term_consistency, 2),
+        "ela_contribution": round(term_ela, 2)
     }
 
+    # Identify failed and uncertain checks
+    failed_checks = []
+    uncertain_checks = []
 
-def _get_risk_level(score: float) -> str:
-    for level, (low, high) in RISK_LEVELS.items():
-        if low <= score < high:
-            return level
-    return "HIGH"
+    for name, result in check_results.items():
+        if isinstance(result, dict):
+            score = result.get("score")
+            if score == 0.0:
+                failed_checks.append(name)
+            elif score == 0.5:
+                uncertain_checks.append(name)
+
+    return {
+        "overall_score": round(overall_score, 1),
+        "status": status,
+        "component_breakdown": component_breakdown,
+        "failed_checks": failed_checks,
+        "uncertain_checks": uncertain_checks,
+    }

@@ -1,5 +1,5 @@
 """
-Verhoeff Checksum — Aadhaar UID validation.
+Verhoeff Checksum - Aadhaar UID validation.
 
 Built on the dihedral group D5 (symmetry group of a regular pentagon).
 Non-commutative structure catches transposition errors that sum-based
@@ -10,7 +10,7 @@ References:
   - https://en.wikipedia.org/wiki/Verhoeff_algorithm
 """
 
-# Multiplication table — encodes D5 group operation (10×10)
+# Multiplication table - encodes D5 group operation (10x10)
 _D = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
     [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
@@ -24,7 +24,7 @@ _D = [
     [9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
 ]
 
-# Permutation table — 8 permutations cycling through digit positions (8×10)
+# Permutation table - 8 permutations cycling through digit positions (8x10)
 _P = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
     [1, 5, 7, 6, 2, 8, 3, 0, 9, 4],
@@ -36,7 +36,7 @@ _P = [
     [7, 0, 4, 6, 9, 1, 3, 2, 5, 8],
 ]
 
-# Inverse table — additive inverse in D5
+# Inverse table - additive inverse in D5
 _INV = [0, 4, 3, 2, 1, 5, 6, 7, 8, 9]
 
 
@@ -52,13 +52,9 @@ def verhoeff_validate(number: str) -> bool:
 
     Returns:
         True if checksum is valid, False otherwise.
-
-    Example:
-        >>> verhoeff_validate("234123412340")  # last digit is check digit
-        True
     """
     number = number.replace(' ', '').replace('-', '')
-    if not number.isdigit():
+    if not number.isdigit() or len(number) != 12:
         return False
 
     c = 0

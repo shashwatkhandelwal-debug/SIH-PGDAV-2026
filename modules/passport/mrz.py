@@ -1,7 +1,7 @@
 """
-MRZ Parser — ICAO 9303 TD3 format (full passport, 2 × 44 chars).
+MRZ Parser  -  ICAO 9303 TD3 format (full passport, 2 × 44 chars).
 
-Parses both lines, extracts all fields, and validates check digits
+Parses both lines, extracts all fields and validates check digits
 using the ICAO 7-3-1 cyclic weighting algorithm.
 """
 import re

@@ -30,7 +30,7 @@ def check_visa_passport_binding(visa_fields: dict, mrz_fields: dict) -> dict:
 
     Returns:
         dict with keys:
-          bound (bool)           — True if passport numbers match
+          bound (bool)            -  True if passport numbers match
           visa_passport_num (str)
           mrz_passport_num  (str)
           normalized_match  (bool)

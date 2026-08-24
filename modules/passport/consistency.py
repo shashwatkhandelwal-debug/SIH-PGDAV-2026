@@ -5,7 +5,7 @@ Cross-checks fields extracted from the MRZ (machine-readable zone)
 against OCR'd VIZ (visual inspection zone) fields.
 
 Defends against: generating a valid MRZ for a fake identity and pasting
-it over a genuine biographical page — the printed VIZ fields won't match.
+it over a genuine biographical page  -  the printed VIZ fields won't match.
 
 Also catches: altering the printed DOB/expiry while leaving the MRZ intact,
 since the MRZ check digits would still be valid but the fields now disagree.

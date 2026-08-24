@@ -1,5 +1,5 @@
 """
-Liveness Detection — Anti-Spoofing.
+Liveness Detection  -  Anti-Spoofing.
 
 Detects whether the live capture is of a real person or a spoofing attack
 (printed photo, phone screen, 3D mask).
@@ -24,7 +24,7 @@ import cv2
 from typing import Optional
 
 
-# EAR threshold — below this = eye closed (blink detected)
+# EAR threshold  -  below this = eye closed (blink detected)
 _EAR_BLINK_THRESHOLD = 0.20
 _EAR_FRAMES_REQUIRED = 2  # Minimum consecutive frames with low EAR = real blink
 
@@ -59,7 +59,7 @@ def passive_liveness_check(image: np.ndarray) -> dict:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             lbp_var = _lbp_variance(gray)
 
-            # Empirical threshold — printed photos typically < 35, real faces > 50
+            # Empirical threshold  -  printed photos typically < 35, real faces > 50
             is_live = lbp_var > 42.0
             confidence = min(lbp_var / 100.0, 1.0)
 

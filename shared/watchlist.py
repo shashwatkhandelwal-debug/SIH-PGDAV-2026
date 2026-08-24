@@ -1,5 +1,5 @@
 """
-Local Watchlist — Flagged document lookup.
+Local Watchlist  -  Flagged document lookup.
 
 Addresses PS requirement: "Expired or blacklisted travel documents."
 
@@ -7,7 +7,7 @@ Maintains a local SQLite database of flagged document numbers.
 In production this would sync with a government database.
 For the hackathon, seeded with simulated demo data.
 
-No network call required — works offline at a checkpoint.
+No network call required  -  works offline at a checkpoint.
 """
 import os
 import sqlite3
@@ -22,7 +22,7 @@ def check_watchlist(doc_number: str, doc_type: str) -> dict:
     Check if a document number is on the watchlist.
 
     Args:
-        doc_number: Passport number, Aadhaar UID, or visa number.
+        doc_number: Passport number, Aadhaar UID or visa number.
         doc_type:   'Aadhaar' | 'Passport' | 'Visa'
 
     Returns:
@@ -65,9 +65,9 @@ def add_to_watchlist(doc_number: str, doc_type: str, reason: str, severity: str 
 def seed_demo_data():
     """Seed watchlist with demo/simulated flagged documents for demonstration."""
     demo_entries = [
-        ('X9999999', 'Passport', 'Reported stolen — Interpol red notice', 'HIGH'),
+        ('X9999999', 'Passport', 'Reported stolen  -  Interpol red notice', 'HIGH'),
         ('123456789012', 'Aadhaar', 'Associated with identity fraud case', 'HIGH'),
-        ('TV1234567', 'Visa', 'Visa revoked — overstay record', 'MEDIUM'),
+        ('TV1234567', 'Visa', 'Visa revoked  -  overstay record', 'MEDIUM'),
         ('A0000001', 'Passport', 'Demo flagged passport for testing', 'LOW'),
     ]
     db = _get_db()

@@ -1,5 +1,5 @@
 """
-Audit Log — Digital Trail of Screening Events.
+Audit Log  -  Digital Trail of Screening Events.
 
 Addresses PS requirement: "Create a digital trail for investigations
 and intelligence analysis."

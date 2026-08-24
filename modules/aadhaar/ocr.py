@@ -1,5 +1,5 @@
 """
-Aadhaar OCR — Extract printed fields from Aadhaar card image.
+Aadhaar OCR  -  Extract printed fields from Aadhaar card image.
 
 Extracts:
   - UID number (12 digits)
@@ -111,7 +111,7 @@ def _extract_name_english(text: str) -> Optional[str]:
 
 def _extract_name_hindi(results: list) -> Optional[str]:
     """
-    Extract Hindi name — Devanagari script characters (U+0900–U+097F).
+    Extract Hindi name  -  Devanagari script characters (U+0900–U+097F).
     EasyOCR with 'hi' lang returns Devanagari text separately.
     """
     devanagari_texts = []

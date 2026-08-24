@@ -34,23 +34,31 @@ def decode_aadhaar_qr(image: np.ndarray) -> dict:
     decoded_objects = pyzbar_decode(pil_image)
 
     qr_data: Optional[bytes] = None
+    region = None
     for obj in decoded_objects:
         if obj.type == 'QRCODE':
             qr_data = obj.data
+            r = obj.rect
+            region = (r.left, r.top, r.left + r.width, r.top + r.height)
             break
 
     if qr_data is None:
-        return {"error": "No QR code detected", "fields": {}}
+        return {"error": "No QR code detected", "fields": {}, "region": None}
 
     # Detect format
+    res = None
     try:
         text = qr_data.decode('utf-8')
         if text.strip().startswith('<'):
-            return _parse_xml_format(text, qr_data)
+            res = _parse_xml_format(text, qr_data)
     except UnicodeDecodeError:
         pass  # Binary format
 
-    return _parse_binary_format(qr_data)
+    if res is None:
+        res = _parse_binary_format(qr_data)
+
+    res["region"] = region
+    return res
 
 
 # ── XML format (pre-2017) ──────────────────────────────────────────────────────

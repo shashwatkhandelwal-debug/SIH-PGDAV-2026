@@ -12,7 +12,7 @@ from typing import Optional
 
 def load_image(source) -> Optional[np.ndarray]:
     """
-    Load an image from a file path, bytes, or numpy array.
+    Load an image from a file path, bytes or numpy array.
     Always returns a BGR numpy array.
     """
     if isinstance(source, np.ndarray):
@@ -30,14 +30,14 @@ def correct_perspective(image: np.ndarray, output_size: tuple = (800, 550)) -> n
     Detect document corners and apply perspective correction.
 
     Finds the largest quadrilateral contour (assumed to be the document),
-    orders its corners (TL, TR, BR, BL), and warps to a flat rectangle.
+    orders its corners (TL, TR, BR, BL) and warps to a flat rectangle.
 
     Args:
         image:       BGR numpy array with the document on any background.
         output_size: (width, height) of the output corrected image.
 
     Returns:
-        Perspective-corrected BGR numpy array, or original if correction fails.
+        Perspective-corrected BGR numpy array or original if correction fails.
     """
     gray   = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blur   = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -55,7 +55,7 @@ def correct_perspective(image: np.ndarray, output_size: tuple = (800, 550)) -> n
         peri  = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, 0.02 * peri, True)
         if len(approx) == 4:
-            # Minimum area check — reject tiny quads
+            # Minimum area check  -  reject tiny quads
             if cv2.contourArea(approx) > 0.10 * image.shape[0] * image.shape[1]:
                 doc_corners = approx.reshape(4, 2).astype(np.float32)
                 break
@@ -78,7 +78,7 @@ def crop_region(image: np.ndarray, region_frac: tuple) -> np.ndarray:
 
     Args:
         image:       BGR numpy array.
-        region_frac: (x1_frac, y1_frac, x2_frac, y2_frac) — values in [0, 1].
+        region_frac: (x1_frac, y1_frac, x2_frac, y2_frac)  -  values in [0, 1].
 
     Returns:
         Cropped BGR array.

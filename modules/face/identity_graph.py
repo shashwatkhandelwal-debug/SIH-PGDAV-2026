@@ -1,5 +1,5 @@
 """
-Identity Graph — Cross-Visit, Cross-Document Identity Detection.
+Identity Graph  -  Cross-Visit, Cross-Document Identity Detection.
 
 Detects when the same person appears at the checkpoint under different
 names or document numbers across separate screening sessions.
@@ -56,10 +56,10 @@ def search_and_store(
 
     Returns:
         dict with keys:
-          matches (list[dict])     — previous screenings of the same face
-          identity_conflict (bool) — True if same face seen under different identity
-          conflict_details (list)  — details of conflicting records
-          stored_id (int)          — row ID of newly stored record
+          matches (list[dict])      -  previous screenings of the same face
+          identity_conflict (bool)  -  True if same face seen under different identity
+          conflict_details (list)   -  details of conflicting records
+          stored_id (int)           -  row ID of newly stored record
     """
     if not _FAISS_AVAILABLE:
         return {"matches": [], "identity_conflict": False,

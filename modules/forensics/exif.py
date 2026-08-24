@@ -5,7 +5,7 @@ Detects editing-tool signatures left in JPEG EXIF metadata by software
 such as Photoshop, GIMP, Lightroom, etc.
 
 Note: A sophisticated forger can strip EXIF with exiftool. Missing EXIF
-is NOT a positive signal — we only flag *presence* of editing-tool tags.
+is NOT a positive signal  -  we only flag *presence* of editing-tool tags.
 """
 from PIL import Image
 import piexif
@@ -34,9 +34,9 @@ def inspect_exif(image_path: str) -> dict:
     Returns:
         dict with keys:
           suspicious (bool)
-          software   (str|None)  — software tag value if present
-          flags      (list[str]) — list of suspicious findings
-          raw_tags   (dict)      — all readable EXIF tags
+          software   (str|None)   -  software tag value if present
+          flags      (list[str])  -  list of suspicious findings
+          raw_tags   (dict)       -  all readable EXIF tags
     """
     try:
         img = Image.open(image_path)
@@ -58,7 +58,7 @@ def inspect_exif(image_path: str) -> dict:
 
         # If software tag overrides make/model (image saved by software, not camera)
         if software and not make and not model:
-            flags.append("Software tag present but no camera Make/Model — image processed by software")
+            flags.append("Software tag present but no camera Make/Model  -  image processed by software")
 
         raw_tags = {
             "Software": software,

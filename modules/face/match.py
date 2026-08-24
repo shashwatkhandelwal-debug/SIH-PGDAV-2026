@@ -1,12 +1,12 @@
 """
-Face Match — Document Photo vs Live Capture.
+Face Match  -  Document Photo vs Live Capture.
 
 Compares the face on the document (Aadhaar card photo or passport bio-page photo)
 against a live capture of the traveler standing at the checkpoint.
 
 Two inputs:
-  1. Document image (full card/page) — face extracted by cropping known region
-     or from chip DG2 (if NFC was successful, chip photo is used — authenticated)
+  1. Document image (full card/page)  -  face extracted by cropping known region
+     or from chip DG2 (if NFC was successful, chip photo is used  -  authenticated)
   2. Live capture frame from Streamlit camera widget
 
 The same ArcFace embedder is used for both to ensure the embedding spaces

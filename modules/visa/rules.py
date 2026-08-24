@@ -1,5 +1,5 @@
 """
-Visa Rule Validation — Logical consistency checks.
+Visa Rule Validation  -  Logical consistency checks.
 
 No cryptographic verification exists for visa stamps.
 Validation is entirely rule-based: internal logical consistency
