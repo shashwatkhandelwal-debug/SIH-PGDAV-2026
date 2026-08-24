@@ -547,6 +547,24 @@ def _display_results(results: dict):
                 f"Similarity: **{conflict['similarity'] * 100:.1f}%**"
             )
 
+    # Face Match Results
+    face_match = check_results.get('face_match')
+    if face_match:
+        st.divider()
+        st.subheader("🤳 Face Verification Results")
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            match_status = "✅ MATCHED" if face_match.get("matched") else "❌ MISMATCH"
+            color = "green" if face_match.get("matched") else "red"
+            st.markdown(f"Status: :{color}[**{match_status}**]")
+            st.metric("Similarity", f"{face_match.get('similarity', 0.0) * 100:.1f}%")
+        with col_f2:
+            liveness_res = check_results.get("liveness", {})
+            live_status = "🟢 LIVE" if liveness_res.get("is_live") else "🔴 SPOOF DETECTED"
+            l_color = "green" if liveness_res.get("is_live") else "red"
+            st.markdown(f"Liveness Check: :{l_color}[**{live_status}**]")
+            st.metric("Liveness Score", f"{liveness_res.get('score', 0.0) * 100:.1f}%")
+
     st.divider()
 
     # Check breakdown
