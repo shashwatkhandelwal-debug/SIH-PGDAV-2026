@@ -562,7 +562,7 @@ def _display_results(results: dict):
     if ela.get('heatmap') is not None:
         st.divider()
         st.subheader("🔬 ELA Heatmap (Tamper Analysis)")
-        st.image(ela['heatmap'], caption="Error Level Analysis - bright regions indicate inconsistent compression history", use_column_width=True)
+        st.image(ela['heatmap'], caption="Error Level Analysis - bright regions indicate inconsistent compression history", use_container_width=True)
 
     # Extracted fields
     ocr = check_results.get('_ocr', {})
