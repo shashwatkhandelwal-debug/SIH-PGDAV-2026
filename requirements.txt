@@ -22,6 +22,7 @@ nfcpy>=1.0.4
 
 # Face Recognition
 deepface>=0.0.91
+tf-keras
 # insightface>=0.7.3   # Alternative — uncomment if using InsightFace directly
 
 # Vector Search (Identity Graph)
