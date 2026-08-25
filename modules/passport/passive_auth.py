@@ -45,20 +45,8 @@ _MASTER_LIST_PATH = os.path.join(
 def perform_passive_auth(chip_data: dict) -> dict:
     """
     Perform Passive Authentication on e-passport chip data.
-
-    Args:
-        chip_data: Dict with keys 'sod' (bytes) and 'data_groups' (dict[int, bytes]).
-                   sod = raw SOD file bytes from chip.
-                   data_groups = {dg_number: raw_bytes, ...}
-
-    Returns:
-        dict with keys:
-          valid (bool)
-          chain_valid (bool)      -  DSC chains to a trusted CSCA
-          dg_hashes_valid (bool)  -  all DG hashes match SOD
-          failed_dgs (list[int])  -  data groups with hash mismatches
-          error (str|None)
     """
+    print("[DEBUG] Entered perform_passive_auth in modules/passport/passive_auth.py")
     if not _CRYPTO_AVAILABLE:
         return {"valid": False, "error": "cryptography / asn1crypto not installed",
                 "chain_valid": None, "dg_hashes_valid": None, "failed_dgs": []}

@@ -453,6 +453,8 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
 
     # Build OCR Extraction block
     ocr_extracted = check_results.get("_ocr", {})
+    if doc_type == "PASSPORT":
+        ocr_extracted = check_results.get("_viz", {})
     qr_parsed = check_results.get("_qr", {})
 
     fields = {}

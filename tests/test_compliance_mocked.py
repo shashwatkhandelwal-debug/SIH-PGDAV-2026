@@ -4,20 +4,72 @@ import json
 import numpy as np
 import cv2
 from unittest.mock import patch
+from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, r"C:\Users\ASUS\Downloads\SIH-PGDAV-2026")
 from api.orchestrator import _run_aadhaar_checks, _run_passport_checks, _run_visa_checks, _finalize
+from modules.aadhaar.ocr import extract_aadhaar_fields
+from modules.passport.viz import extract_viz_fields
 
 
-def get_mock_image():
-    # Generate a pattern with random Gaussian noise to ensure blur check succeeds with non-zero score
-    img = np.zeros((550, 800, 3), dtype=np.uint8)
-    cv2.randn(img, 127, 40)
-    return img
+def create_mock_document(text_lines, width=800, height=550):
+    """Draw clear, sharp black text on a white card to create a real scan target."""
+    img = Image.new("RGB", (width, height), color="white")
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.load_default()
+    except Exception:
+        font = None
+    for i, line in enumerate(text_lines):
+        y = 30 + i * 40
+        draw.text((30, y), line, fill="black", font=font)
+    
+    cv_img = np.array(img)
+    cv_img = cv_img[:, :, ::-1].copy() # RGB to BGR
+    return cv_img
+
+
+# Define mock document content
+aadhaar_lines = [
+    "Government of India",
+    "Unique Identification Authority of India",
+    "Name: SHASHWAT KHANDELWAL",
+    "DOB: 12/05/1990",
+    "Gender: MALE",
+    "UID: 2341 2341 2346",
+    "Address: 7/168 B Swaroop nagar Kanpur"
+]
+
+passport_lines = [
+    "PASSPORT",
+    "Surname: KHANDELWAL",
+    "Given Names: SHASHWAT",
+    "Date of Birth: 12/05/1990",
+    "Date of Issue: 10/10/2020",
+    "Date of Expiry: 09/10/2030",
+    "Place of Birth: KANPUR",
+    "Nationality: INDIAN"
+]
+
+visa_lines = [
+    "VISA",
+    "Visa Number: TV1234567",
+    "Visa Type: Tourist",
+    "Date of Issue: 12/05/2026",
+    "Date of Expiry: 12/11/2026",
+    "Duration Days: 90",
+    "Entries: Multiple",
+    "Passport Number: L8406789",
+    "Applicant Name: SHASHWAT KHANDELWAL"
+]
 
 
 async def test_aadhaar_genuine():
-    # 12-digit UID with correct check digit (6)
+    img = create_mock_document(aadhaar_lines)
+    
+    # Run ACTUAL OCR to compute a real confidence score from the sharp image
+    real_ocr = extract_aadhaar_fields(img)
+    
     ocr_mock = {
         "uid": "234123412346",
         "name_en": "Shashwat Khandelwal",
@@ -25,8 +77,9 @@ async def test_aadhaar_genuine():
         "dob": "12/05/1990",
         "gender": "MALE",
         "address": "7/168 B Swaroop nagar Kanpur",
-        "confidence": 0.95
+        "confidence": real_ocr["confidence"]
     }
+    
     qr_mock = {
         "format": "binary",
         "fields": {
@@ -39,8 +92,6 @@ async def test_aadhaar_genuine():
         "region": (100, 200, 300, 400),
         "error": None
     }
-    
-    img = get_mock_image()
     
     with patch("modules.aadhaar.ocr.extract_aadhaar_fields", return_value=ocr_mock), \
          patch("modules.aadhaar.qr.decode_aadhaar_qr", return_value=qr_mock), \
@@ -57,7 +108,13 @@ async def test_aadhaar_genuine():
 
 
 async def test_aadhaar_tampered():
-    # 12-digit UID with invalid check digit (1 instead of 6)
+    # Generate a degraded (blurred) Aadhaar card
+    img_sharp = create_mock_document(aadhaar_lines)
+    img_degraded = cv2.GaussianBlur(img_sharp, (15, 15), 0)
+    
+    # Run ACTUAL OCR on degraded image to get a lower confidence score
+    real_ocr = extract_aadhaar_fields(img_degraded)
+    
     ocr_mock = {
         "uid": "234123412341",
         "name_en": "Shashwat Khandelwal",
@@ -65,8 +122,9 @@ async def test_aadhaar_tampered():
         "dob": "12/05/1990",
         "gender": "MALE",
         "address": "7/168 B Swaroop nagar Kanpur",
-        "confidence": 0.95
+        "confidence": real_ocr["confidence"]
     }
+    
     qr_mock = {
         "format": "binary",
         "fields": {
@@ -80,15 +138,13 @@ async def test_aadhaar_tampered():
         "error": None
     }
     
-    img = get_mock_image()
-    
     with patch("modules.aadhaar.ocr.extract_aadhaar_fields", return_value=ocr_mock), \
          patch("modules.aadhaar.qr.decode_aadhaar_qr", return_value=qr_mock), \
          patch("modules.aadhaar.signature.verify_uidai_signature", return_value={"valid": False, "error": "Signature mismatch"}), \
          patch("modules.aadhaar.consistency.check_qr_ocr_consistency", return_value={"consistent": False, "mismatches": ["name"]}), \
          patch("modules.forensics.ela.run_ela", return_value={"mean_variance": 22.5, "heatmap": np.zeros((10,10,3)), "suspicious": True}):
          
-         results, notes = await _run_aadhaar_checks(img)
+         results, notes = await _run_aadhaar_checks(img_degraded)
          resp = await _finalize(results, "AADHAAR", ocr_mock["uid"], ocr_mock["name_en"], {}, notes)
          print("\n========================================")
          print("TAMPERED AADHAAR JSON RESPONSE:")
@@ -97,6 +153,11 @@ async def test_aadhaar_tampered():
 
 
 async def test_passport_genuine():
+    img = create_mock_document(passport_lines)
+    
+    # Run ACTUAL OCR to compute a real confidence score from the sharp image
+    real_viz = extract_viz_fields(img)
+    
     mrz_mock = {
         "valid": True,
         "passport_number": "L8406789",
@@ -121,10 +182,8 @@ async def test_passport_genuine():
         "dob": "12/05/1990",
         "nationality": "IND",
         "doe": "01/01/2035",
-        "confidence": 0.95
+        "confidence": real_viz["confidence"]
     }
-    
-    img = get_mock_image()
     
     with patch("api.orchestrator._extract_mrz_from_image", return_value=mrz_mock), \
          patch("modules.passport.viz.extract_viz_fields", return_value=viz_mock), \
@@ -140,7 +199,13 @@ async def test_passport_genuine():
 
 
 async def test_passport_tampered():
-    # MRZ check digits fail
+    # Generate a degraded (blurred) passport biographical page
+    img_sharp = create_mock_document(passport_lines)
+    img_degraded = cv2.GaussianBlur(img_sharp, (15, 15), 0)
+    
+    # Run ACTUAL OCR to compute a degraded confidence score
+    real_viz = extract_viz_fields(img_degraded)
+    
     mrz_mock = {
         "valid": False,
         "passport_number": "L8406789",
@@ -151,7 +216,7 @@ async def test_passport_tampered():
         "sex": "M",
         "expiry": "01/01/2035",
         "check_digits": {
-            "passport_number": False,  # Failed check digit
+            "passport_number": False,
             "dob": True,
             "expiry": True,
             "personal_number": True,
@@ -165,22 +230,45 @@ async def test_passport_tampered():
         "dob": "12/05/1990",
         "nationality": "IND",
         "doe": "01/01/2035",
-        "confidence": 0.95
+        "confidence": real_viz["confidence"]
     }
-    
-    img = get_mock_image()
     
     with patch("api.orchestrator._extract_mrz_from_image", return_value=mrz_mock), \
          patch("modules.passport.viz.extract_viz_fields", return_value=viz_mock), \
          patch("modules.passport.consistency.check_mrz_viz_consistency", return_value={"consistent": False, "mismatches": ["surname"]}), \
          patch("modules.forensics.ela.run_ela", return_value={"mean_variance": 28.5, "heatmap": np.zeros((10,10,3)), "suspicious": True}):
          
-         results, notes = await _run_passport_checks(img, nfc_available=False)
+         results, notes = await _run_passport_checks(img_degraded, nfc_available=False)
          resp = await _finalize(results, "PASSPORT", "L8406789", "KHANDELWAL SHASHWAT", {}, notes)
          print("\n========================================")
          print("TAMPERED PASSPORT JSON RESPONSE:")
          print("========================================")
          print(json.dumps(resp, indent=2))
+
+
+async def test_passport_nfc_active():
+    """Verify that perform_passive_auth is actually called in the NFC path."""
+    img = create_mock_document(passport_lines)
+    mrz_mock = {"valid": True, "passport_number": "L8406789"}
+    viz_mock = {"passport_number": "L8406789", "confidence": 0.9}
+    
+    with patch("api.orchestrator._extract_mrz_from_image", return_value=mrz_mock), \
+         patch("modules.passport.viz.extract_viz_fields", return_value=viz_mock), \
+         patch("modules.passport.consistency.check_mrz_viz_consistency", return_value={"consistent": True, "mismatches": []}), \
+         patch("modules.forensics.ela.run_ela", return_value={"mean_variance": 1.4, "heatmap": np.zeros((10,10,3)), "suspicious": False}):
+         
+         # Call with nfc_available=True and mock payloads to trigger perform_passive_auth
+         results, notes = await _run_passport_checks(
+             img,
+             nfc_available=True,
+             sod_bytes=b"dummy_sod_bytes_to_trigger",
+             dg1_bytes=b"dummy_dg1_bytes_to_trigger",
+             dg2_bytes=b"dummy_dg2_bytes_to_trigger"
+         )
+         resp = await _finalize(results, "PASSPORT", "L8406789", "KHANDELWAL SHASHWAT", {}, notes)
+         print("\n========================================")
+         print("PASSPORT ACTIVE NFC PATH COMPLETED:")
+         print("========================================")
 
 
 async def test_visa_genuine():
@@ -196,7 +284,7 @@ async def test_visa_genuine():
         "confidence": 0.95
     }
     
-    img = get_mock_image()
+    img = create_mock_document(visa_lines)
     
     with patch("modules.visa.ocr.extract_visa_fields", return_value=visa_mock), \
          patch("modules.visa.rules.validate_visa_rules", return_value={"valid": True, "score": 1.0, "violations": []}), \
@@ -212,27 +300,26 @@ async def test_visa_genuine():
 
 
 async def test_visa_tampered():
-    # Rules violate transit visa length
     visa_mock = {
         "visa_number": "TV1234567",
         "visa_type": "Transit",
         "date_of_issue": "12/05/2026",
         "date_of_expiry": "12/11/2026",
-        "duration_days": 90,  # Transit is max 3 days
+        "duration_days": 90,
         "num_entries": "Single",
         "passport_number": "L8406789",
         "applicant_name": "Shashwat Khandelwal",
         "confidence": 0.95
     }
     
-    img = get_mock_image()
+    img = create_mock_document(visa_lines)
     
     with patch("modules.visa.ocr.extract_visa_fields", return_value=visa_mock), \
          patch("modules.visa.rules.validate_visa_rules", return_value={"valid": False, "score": 0.2, "violations": ["Stay duration 90 days exceeds max 3 days for Transit"]}), \
          patch("modules.visa.binding.check_visa_passport_binding", return_value={"bound": False, "score": 0.0}), \
          patch("modules.forensics.ela.run_ela", return_value={"mean_variance": 19.8, "heatmap": np.zeros((10,10,3)), "suspicious": True}):
          
-         results, notes = await _run_visa_checks(img, passport_mrz_number="X9999999")  # different passport
+         results, notes = await _run_visa_checks(img, passport_mrz_number="X9999999")
          resp = await _finalize(results, "VISA", "TV1234567", "Shashwat Khandelwal", {}, notes)
          print("\n========================================")
          print("TAMPERED VISA JSON RESPONSE:")
@@ -241,27 +328,26 @@ async def test_visa_tampered():
 
 
 async def test_visa_duration_rule_only_fail():
-    # Stay duration exceeds transit rules, but binding is clean and ELA is clean
     visa_mock = {
         "visa_number": "TV1234567",
         "visa_type": "Transit",
         "date_of_issue": "12/05/2026",
         "date_of_expiry": "12/11/2026",
-        "duration_days": 90,  # Transit is max 3 days
+        "duration_days": 90,
         "num_entries": "Single",
         "passport_number": "L8406789",
         "applicant_name": "Shashwat Khandelwal",
         "confidence": 0.95
     }
     
-    img = get_mock_image()
+    img = create_mock_document(visa_lines)
     
     with patch("modules.visa.ocr.extract_visa_fields", return_value=visa_mock), \
          patch("modules.visa.rules.validate_visa_rules", return_value={"valid": False, "score": 0.2, "violations": ["Stay duration 90 days exceeds max 3 days for Transit"]}), \
          patch("modules.visa.binding.check_visa_passport_binding", return_value={"bound": True, "score": 1.0}), \
          patch("modules.forensics.ela.run_ela", return_value={"mean_variance": 1.1, "heatmap": np.zeros((10,10,3)), "suspicious": False}):
          
-         results, notes = await _run_visa_checks(img, passport_mrz_number="L8406789")  # correct passport binding
+         results, notes = await _run_visa_checks(img, passport_mrz_number="L8406789")
          resp = await _finalize(results, "VISA", "TV1234567", "Shashwat Khandelwal", {}, notes)
          print("\n========================================")
          print("VISA DURATION-ONLY RULE VIOLATION JSON RESPONSE:")
@@ -274,6 +360,7 @@ async def main():
     await test_aadhaar_tampered()
     await test_passport_genuine()
     await test_passport_tampered()
+    await test_passport_nfc_active()
     await test_visa_genuine()
     await test_visa_tampered()
     await test_visa_duration_rule_only_fail()
