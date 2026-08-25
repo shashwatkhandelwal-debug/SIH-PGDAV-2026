@@ -722,6 +722,8 @@ async def _safe_run(fn, *args, **kwargs):
 async def _load_image_from_upload(upload: UploadFile) -> np.ndarray:
     data = await upload.read()
     await upload.seek(0)
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty image file uploaded")
     buf = np.frombuffer(data, dtype=np.uint8)
     img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
     if img is None:
@@ -754,10 +756,10 @@ async def _run_exif_forensics(upload: UploadFile) -> dict:
 def _extract_mrz_from_image(image: np.ndarray):
     """Extract and parse MRZ lines from the bottom strip of a passport image."""
     from modules.passport.mrz import parse_mrz
-    import easyocr
+    from modules.passport.viz import _get_reader
     h = image.shape[0]
     mrz_strip = image[int(h * 0.80):, :]
-    reader = easyocr.Reader(['en'], gpu=False)
+    reader = _get_reader()
     results = reader.readtext(mrz_strip, detail=0)
     mrz_lines = [r.replace(' ', '').upper() for r in results if len(r.replace(' ', '')) >= 40]
     if len(mrz_lines) >= 2:
