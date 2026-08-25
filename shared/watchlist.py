@@ -23,7 +23,7 @@ def check_watchlist(doc_number: str, doc_type: str) -> dict:
 
     Args:
         doc_number: Passport number, Aadhaar UID or visa number.
-        doc_type:   'Aadhaar' | 'Passport' | 'Visa'
+        doc_type:   'AADHAAR' | 'PASSPORT' | 'VISA'
 
     Returns:
         dict with keys: flagged (bool), reason (str|None), added_date (str|None)
@@ -31,7 +31,7 @@ def check_watchlist(doc_number: str, doc_type: str) -> dict:
     db = _get_db()
     cur = db.execute(
         "SELECT reason, added_date, severity FROM watchlist WHERE doc_number=? AND doc_type=?",
-        (doc_number.strip().upper(), doc_type)
+        (doc_number.strip().upper(), doc_type.strip().upper())
     )
     row = cur.fetchone()
     db.close()
@@ -52,7 +52,7 @@ def add_to_watchlist(doc_number: str, doc_type: str, reason: str, severity: str 
     try:
         db.execute(
             "INSERT OR REPLACE INTO watchlist (doc_number, doc_type, reason, severity, added_date) VALUES (?,?,?,?,?)",
-            (doc_number.strip().upper(), doc_type, reason, severity, datetime.utcnow().isoformat())
+            (doc_number.strip().upper(), doc_type.strip().upper(), reason, severity, datetime.utcnow().isoformat())
         )
         db.commit()
         return True
@@ -65,10 +65,10 @@ def add_to_watchlist(doc_number: str, doc_type: str, reason: str, severity: str 
 def seed_demo_data():
     """Seed watchlist with demo/simulated flagged documents for demonstration."""
     demo_entries = [
-        ('X9999999', 'Passport', 'Reported stolen  -  Interpol red notice', 'HIGH'),
-        ('123456789012', 'Aadhaar', 'Associated with identity fraud case', 'HIGH'),
-        ('TV1234567', 'Visa', 'Visa revoked  -  overstay record', 'MEDIUM'),
-        ('A0000001', 'Passport', 'Demo flagged passport for testing', 'LOW'),
+        ('X9999999', 'PASSPORT', 'Reported stolen - Interpol red notice', 'HIGH'),
+        ('123456789012', 'AADHAAR', 'Associated with identity fraud case', 'HIGH'),
+        ('TV1234567', 'VISA', 'Visa revoked - overstay record', 'MEDIUM'),
+        ('A0000001', 'PASSPORT', 'Demo flagged passport for testing', 'LOW'),
     ]
     db = _get_db()
     for doc_number, doc_type, reason, severity in demo_entries:
@@ -93,4 +93,10 @@ def _get_db() -> sqlite3.Connection:
         )
     """)
     db.commit()
+    # Migrate existing entries to uppercase doc_types
+    try:
+        db.execute("UPDATE watchlist SET doc_type = UPPER(doc_type)")
+        db.commit()
+    except Exception:
+        pass
     return db

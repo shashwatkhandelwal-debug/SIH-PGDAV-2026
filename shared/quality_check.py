@@ -30,7 +30,23 @@ def check_quality(image: np.ndarray) -> dict:
           blur_score (float)
           resolution (tuple)
     """
+    # Standardize image array to uint8 [0, 255] range
+    if image.dtype.kind == 'f':
+        if np.max(image) <= 1.01:
+            image = np.clip(image * 255.0, 0, 255).astype(np.uint8)
+        else:
+            image = np.clip(image, 0, 255).astype(np.uint8)
+    elif image.dtype != np.uint8:
+        image = image.astype(np.uint8)
+
     issues = []
+    
+    # Handle single channel (grayscale) images by replicating channels
+    if len(image.shape) == 2:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    elif len(image.shape) == 3 and image.shape[2] == 1:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
     h, w = image.shape[:2]
 
     # Orientation-independent resolution check

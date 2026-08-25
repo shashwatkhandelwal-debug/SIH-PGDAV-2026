@@ -91,7 +91,7 @@ def match_face_to_document(
 def _crop_face_region(image: np.ndarray, doc_type: str) -> Optional[np.ndarray]:
     """Crop the expected face region from document image."""
     h, w = image.shape[:2]
-    if doc_type == 'Aadhaar':
+    if doc_type.upper() == 'AADHAAR':
         x1f, y1f, x2f, y2f = _AADHAAR_FACE_REGION
     else:
         x1f, y1f, x2f, y2f = _PASSPORT_FACE_REGION

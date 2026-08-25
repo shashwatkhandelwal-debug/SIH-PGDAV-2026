@@ -57,7 +57,7 @@ async def screen_aadhaar(
 
     if live_image is not None:
         face_result = await _safe_run(
-            _run_face_checks, doc_image, live_image, 'Aadhaar'
+            _run_face_checks, doc_image, live_image, 'AADHAAR'
         )
         if face_result:
             check_results.update(face_result)
@@ -65,7 +65,7 @@ async def screen_aadhaar(
     doc_num = check_results.get('_meta', {}).get('doc_number', '')
     name = check_results.get('_meta', {}).get('name', '')
 
-    return await _finalize(check_results, 'Aadhaar', doc_num, name, exif_data, notes)
+    return await _finalize(check_results, 'AADHAAR', doc_num, name, exif_data, notes)
 
 
 @app.post("/screen/passport")
@@ -97,7 +97,7 @@ async def screen_passport(
 
     if live_image is not None:
         face_result = await _safe_run(
-            _run_face_checks, doc_image, live_image, 'Passport', chip_face_bytes
+            _run_face_checks, doc_image, live_image, 'PASSPORT', chip_face_bytes
         )
         if face_result:
             check_results.update(face_result)
@@ -105,7 +105,7 @@ async def screen_passport(
     doc_num = check_results.get('_meta', {}).get('doc_number', '')
     name = check_results.get('_meta', {}).get('name', '')
 
-    return await _finalize(check_results, 'Passport', doc_num, name, exif_data, notes)
+    return await _finalize(check_results, 'PASSPORT', doc_num, name, exif_data, notes)
 
 
 @app.post("/screen/visa")
@@ -122,7 +122,7 @@ async def screen_visa(
     doc_num = check_results.get('_meta', {}).get('doc_number', '')
     name = check_results.get('_meta', {}).get('name', '')
 
-    return await _finalize(check_results, 'Visa', doc_num, name, exif_data, notes)
+    return await _finalize(check_results, 'VISA', doc_num, name, exif_data, notes)
 
 
 @app.get("/audit/recent")
@@ -425,10 +425,20 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
     from modules.decision.llm_summary import generate_summary
     from shared.audit import log_screening
 
+    doc_type = doc_type.upper()
     score_input = {k: v for k, v in check_results.items() if not k.startswith('_')}
-    score_result = compute_score(score_input)
+    
+    # If Visa rules fail, append violations to notes list
+    if doc_type == "VISA":
+        rules = check_results.get("visa_rule_validation", {})
+        if isinstance(rules, dict) and not rules.get("valid", True):
+            for v in rules.get("violations", []):
+                notes.append(f"Visa rule violation: {v}")
+
+    score_result = compute_score(score_input, doc_type)
     summary = generate_summary(score_input, score_result)
 
+    # Log screening using uppercase doc_type
     log_screening(
         doc_type=doc_type,
         doc_number=doc_number,
@@ -450,7 +460,7 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
     mrz_fields = None
     viz_fields = None
 
-    if doc_type == "Aadhaar":
+    if doc_type == "AADHAAR":
         fields = {
             "uid": ocr_extracted.get("uid"),
             "name_en": ocr_extracted.get("name_en"),
@@ -460,7 +470,7 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
             "address": ocr_extracted.get("address")
         }
         qr_fields = qr_parsed.get("fields")
-    elif doc_type == "Passport":
+    elif doc_type == "PASSPORT":
         mrz_parsed = check_results.get("_mrz", {})
         viz_parsed = check_results.get("_viz", {})
         mrz_fields = {
@@ -483,7 +493,7 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
             "nationality": viz_parsed.get("nationality")
         }
         fields = mrz_fields
-    elif doc_type == "Visa":
+    elif doc_type == "VISA":
         fields = {
             "visa_number": ocr_extracted.get("visa_number"),
             "visa_type": ocr_extracted.get("visa_type"),
@@ -500,7 +510,7 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
         "qr_fields": qr_fields,
         "mrz_fields": mrz_fields,
         "viz_fields": viz_fields,
-        "extraction_notes": f"OCR Confidence: {ocr_extracted.get('confidence', 0.0)}"
+        "extraction_notes": [f"OCR Confidence: {ocr_extracted.get('confidence', 0.0)}"]
     }
 
     # Build Validation block
@@ -511,7 +521,7 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
     cross_field_consistent = None
     cross_field_mismatches = []
 
-    if doc_type == "Aadhaar":
+    if doc_type == "AADHAAR":
         verh = score_input.get("aadhaar_verhoeff", {})
         checksum_valid = (verh.get("score") == 1.0)
         checksum_reason = "Verhoeff check digit matches" if checksum_valid else verh.get("error", "Verhoeff checksum failed")
@@ -523,8 +533,10 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
         cons = score_input.get("aadhaar_qr_ocr_consistency", {})
         cross_field_consistent = (cons.get("score") == 1.0)
         cross_field_mismatches = cons.get("mismatches", [])
+        if not cross_field_consistent and not cross_field_mismatches:
+            cross_field_mismatches = ["qr_data_unavailable"]
 
-    elif doc_type == "Passport":
+    elif doc_type == "PASSPORT":
         chk = score_input.get("passport_mrz_checksums", {})
         checksum_valid = (chk.get("score") == 1.0)
         checksum_reason = "ICAO 9303 checksums valid" if checksum_valid else chk.get("error", "MRZ check digits failed")
@@ -540,15 +552,17 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
         cons = score_input.get("passport_mrz_viz_consistency", {})
         cross_field_consistent = (cons.get("score") == 1.0)
         cross_field_mismatches = cons.get("mismatches", [])
+        if not cross_field_consistent and not cross_field_mismatches:
+            cross_field_mismatches = ["mrz_data_unavailable"]
 
-    elif doc_type == "Visa":
+    elif doc_type == "VISA":
         bind = score_input.get("visa_passport_binding", {})
         if isinstance(bind, dict) and bind.get("score") is not None:
             cross_field_consistent = (bind.get("score") == 1.0)
             cross_field_mismatches = [] if cross_field_consistent else ["passport_number"]
         else:
-            cross_field_consistent = None
-            cross_field_mismatches = []
+            cross_field_consistent = False
+            cross_field_mismatches = ["passport_data_unavailable"]
 
     validation = {
         "checksum_valid": checksum_valid,
@@ -563,15 +577,22 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
     ela_full = score_input.get("ela_full_document", {})
     ela_reg = score_input.get("ela_region_restricted")
 
-    full_doc_anomaly_score = float(ela_full.get("mean_variance", 0.0))
-    region_anomaly_score = float(ela_reg.get("mean_variance", 0.0)) if isinstance(ela_reg, dict) else None
+    # Normalize raw variance values by ELA_NORMALIZATION_THRESHOLD (15.0) and cap at [0.0, 1.0]
+    raw_full_score = float(ela_full.get("mean_variance", 0.0))
+    full_doc_anomaly_score = min(1.0, round(raw_full_score / 15.0, 4))
+    
+    if isinstance(ela_reg, dict):
+        raw_reg_score = float(ela_reg.get("mean_variance", 0.0))
+        region_anomaly_score = min(1.0, round(raw_reg_score / 15.0, 4))
+    else:
+        region_anomaly_score = None
 
     region_checked = None
-    if doc_type == "Aadhaar":
+    if doc_type == "AADHAAR":
         region_checked = "QR Code" if ela_reg else None
-    elif doc_type == "Passport":
+    elif doc_type == "PASSPORT":
         region_checked = "Photo"
-    elif doc_type == "Visa":
+    elif doc_type == "VISA":
         region_checked = "Visa Stamp"
 
     heatmap_available = ela_full.get("heatmap") is not None
@@ -601,7 +622,7 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
         "validation": validation,
         "tampering_forensics": tampering_forensics,
         "risk_assessment": risk_assessment,
-        "processing_notes": "; ".join(notes) if notes else "All checks executed normally"
+        "processing_notes": notes if notes else ["All checks executed normally"]
     }
 
     # Include face match and identity graph results if present

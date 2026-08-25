@@ -129,4 +129,10 @@ def _get_db() -> sqlite3.Connection:
         )
     """)
     db.commit()
+    # Migrate existing entries to uppercase doc_types
+    try:
+        db.execute("UPDATE audit_log SET doc_type = UPPER(doc_type)")
+        db.commit()
+    except Exception:
+        pass
     return db

@@ -33,7 +33,7 @@ for key in ['start_front', 'start_back', 'start_bio', 'start_extra', 'start_visa
 
 # Reset state on doc_type change to avoid camera conflicts
 if "last_doc_type" not in st.session_state:
-    st.session_state.last_doc_type = "Aadhaar"
+    st.session_state.last_doc_type = "AADHAAR"
 
 # Inject scanner styles with scanline animation
 st.markdown("""
@@ -41,46 +41,45 @@ st.markdown("""
 /* Document Scan Overlay styling */
 .doc-scan-container div[data-testid="stCameraInput"] {
     border: 3px dashed #00FF00 !important;
-    border-radius: 12px !important;
-    position: relative !important;
-    box-shadow: 0 0 15px rgba(0, 255, 0, 0.2) !important;
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
 }
-
+.doc-scan-container div[data-testid="stCameraInput"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(to bottom, rgba(0, 255, 0, 0), #00FF00);
+    animation: scanline 2.5s linear infinite;
+    z-index: 10;
+    pointer-events: none;
+}
 /* Face Scan Overlay styling */
 .face-scan-container div[data-testid="stCameraInput"] {
-    border: 3px dashed #00BFFF !important;
-    border-radius: 12px !important;
-    position: relative !important;
-    box-shadow: 0 0 15px rgba(0, 191, 255, 0.2) !important;
+    border: 3px dashed #0088FF !important;
+    border-radius: 50% !important;
+    position: relative;
+    overflow: hidden;
 }
-
-/* Scanline animation */
-@keyframes scan {
+.face-scan-container div[data-testid="stCameraInput"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(to bottom, rgba(0, 136, 255, 0), #0088FF);
+    animation: scanline 3.5s linear infinite;
+    z-index: 10;
+    pointer-events: none;
+}
+@keyframes scanline {
     0% { top: 0%; }
     50% { top: 100%; }
     100% { top: 0%; }
-}
-.doc-scan-container div[data-testid="stCameraInput"]::before {
-    content: "";
-    position: absolute;
-    width: 100%;
-    height: 4px;
-    background: rgba(0, 255, 0, 0.6);
-    box-shadow: 0 0 8px rgba(0, 255, 0, 0.8);
-    animation: scan 4s linear infinite;
-    z-index: 10;
-    pointer-events: none;
-}
-.face-scan-container div[data-testid="stCameraInput"]::before {
-    content: "";
-    position: absolute;
-    width: 100%;
-    height: 4px;
-    background: rgba(0, 191, 255, 0.6);
-    box-shadow: 0 0 8px rgba(0, 191, 255, 0.8);
-    animation: scan 4s linear infinite;
-    z-index: 10;
-    pointer-events: none;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -93,7 +92,7 @@ st.divider()
 # ── Document type selector ─────────────────────────────────────────────────────
 doc_type = st.radio(
     "Select document type to screen:",
-    ["Aadhaar", "Passport", "Visa"],
+    ["AADHAAR", "PASSPORT", "VISA"],
     horizontal=True,
 )
 
@@ -115,7 +114,7 @@ with col_input:
     inputs = {}
     ready_to_screen = False
     
-    if doc_type == "Aadhaar":
+    if doc_type == "AADHAAR":
         st.info("Aadhaar requires scanning both front (biometrics/photo) and back (secure QR/address).")
         
         # Step 1: Front Page
@@ -149,7 +148,7 @@ with col_input:
             
         ready_to_screen = 'front' in inputs and 'back' in inputs
         
-    elif doc_type == "Passport":
+    elif doc_type == "PASSPORT":
         st.info("Scan the main biographical data page (containing MRZ text at bottom).")
         
         # Step 1: Bio page
@@ -183,7 +182,7 @@ with col_input:
             
         ready_to_screen = 'bio' in inputs
         
-    elif doc_type == "Visa":
+    elif doc_type == "VISA":
         st.info("Scan the Visa stamp/sticker, plus the traveler's passport biographical page to run automatic binding verification.")
         
         # Step 1: Visa stamp
@@ -239,7 +238,7 @@ def _run_screening(doc_type: str, inputs: dict, live_face_img=None) -> dict:
     from shared.quality_check import check_quality
 
     # Validate image quality for primary inputs
-    primary_key = 'front' if doc_type == 'Aadhaar' else ('bio' if doc_type == 'Passport' else 'visa')
+    primary_key = 'front' if doc_type == 'AADHAAR' else ('bio' if doc_type == 'PASSPORT' else 'visa')
     primary_img = inputs[primary_key]
     
     quality = check_quality(primary_img)
@@ -252,11 +251,11 @@ def _run_screening(doc_type: str, inputs: dict, live_face_img=None) -> dict:
 
     check_results = {}
 
-    if doc_type == "Aadhaar":
+    if doc_type == "AADHAAR":
         check_results = _screen_aadhaar(inputs['front'], inputs['back'])
-    elif doc_type == "Passport":
+    elif doc_type == "PASSPORT":
         check_results = _screen_passport(inputs['bio'], inputs.get('extra'))
-    elif doc_type == "Visa":
+    elif doc_type == "VISA":
         check_results = _screen_visa(inputs['visa'], inputs['passport'])
 
     # Face match (if live face capture provided)
@@ -269,7 +268,7 @@ def _run_screening(doc_type: str, inputs: dict, live_face_img=None) -> dict:
         live_arr = np.array(pil)[..., ::-1]
         
         # Match against biographical page photo
-        doc_face_img = inputs['front'] if doc_type == 'Aadhaar' else inputs['bio']
+        doc_face_img = inputs['front'] if doc_type == 'AADHAAR' else inputs['bio']
         
         face_result = match_face_to_document(doc_face_img, live_arr, doc_type)
         check_results['face_match'] = face_result
