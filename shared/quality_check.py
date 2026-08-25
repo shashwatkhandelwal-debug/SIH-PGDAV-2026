@@ -5,6 +5,7 @@ Validates that an image meets minimum quality requirements before
 running OCR or forensics. Prevents silent errors from blurry
 or low-resolution inputs.
 """
+
 import cv2
 import numpy as np
 
@@ -31,7 +32,7 @@ def check_quality(image: np.ndarray) -> dict:
           resolution (tuple)
     """
     # Standardize image array to uint8 [0, 255] range
-    if image.dtype.kind == 'f':
+    if image.dtype.kind == "f":
         if np.max(image) <= 1.01:
             image = np.clip(image * 255.0, 0, 255).astype(np.uint8)
         else:
@@ -40,7 +41,7 @@ def check_quality(image: np.ndarray) -> dict:
         image = image.astype(np.uint8)
 
     issues = []
-    
+
     # Handle single channel (grayscale) images by replicating channels
     if len(image.shape) == 2:
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)

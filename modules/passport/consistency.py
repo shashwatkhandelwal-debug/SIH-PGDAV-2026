@@ -15,13 +15,14 @@ or INTERPOL's SLTD (Stolen and Lost Travel Documents) database is NOT implemente
 This requires institutional access (diplomatic/immigration API integration) that is
 outside the current scope. This module is an architected extension point for such lookups.
 """
-from Levenshtein import distance as levenshtein_distance
-from typing import Optional
+
 from datetime import datetime
+from typing import Optional
 
+from Levenshtein import distance as levenshtein_distance
 
-_NAME_EDIT_THRESHOLD = 4   # Allows for OCR noise in longer names
-_DATE_EXACT = True         # Dates must match exactly after normalization
+_NAME_EDIT_THRESHOLD = 4  # Allows for OCR noise in longer names
+_DATE_EXACT = True  # Dates must match exactly after normalization
 
 
 def check_mrz_viz_consistency(mrz: dict, viz: dict) -> dict:
@@ -39,34 +40,36 @@ def check_mrz_viz_consistency(mrz: dict, viz: dict) -> dict:
     details = {}
 
     # 1. Surname
-    sn = _compare_name(mrz.get('surname'), viz.get('surname'), 'surname')
-    details['surname'] = sn
-    if sn.get('match') is False:
-        mismatches.append('surname')
+    sn = _compare_name(mrz.get("surname"), viz.get("surname"), "surname")
+    details["surname"] = sn
+    if sn.get("match") is False:
+        mismatches.append("surname")
 
     # 2. Given names
-    gn = _compare_name(mrz.get('given_names'), viz.get('given_names'), 'given_names')
-    details['given_names'] = gn
-    if gn.get('match') is False:
-        mismatches.append('given_names')
+    gn = _compare_name(mrz.get("given_names"), viz.get("given_names"), "given_names")
+    details["given_names"] = gn
+    if gn.get("match") is False:
+        mismatches.append("given_names")
 
     # 3. Date of birth
-    dob = _compare_date(mrz.get('dob'), viz.get('dob'), 'dob')
-    details['dob'] = dob
-    if dob.get('match') is False:
-        mismatches.append('dob')
+    dob = _compare_date(mrz.get("dob"), viz.get("dob"), "dob")
+    details["dob"] = dob
+    if dob.get("match") is False:
+        mismatches.append("dob")
 
     # 4. Date of expiry
-    doe = _compare_date(mrz.get('expiry'), viz.get('doe'), 'expiry')
-    details['expiry'] = doe
-    if doe.get('match') is False:
-        mismatches.append('expiry')
+    doe = _compare_date(mrz.get("expiry"), viz.get("doe"), "expiry")
+    details["expiry"] = doe
+    if doe.get("match") is False:
+        mismatches.append("expiry")
 
     # 5. Passport number
-    pn = _compare_exact(mrz.get('passport_number'), viz.get('passport_number'), 'passport_number')
-    details['passport_number'] = pn
-    if pn.get('match') is False:
-        mismatches.append('passport_number')
+    pn = _compare_exact(
+        mrz.get("passport_number"), viz.get("passport_number"), "passport_number"
+    )
+    details["passport_number"] = pn
+    if pn.get("match") is False:
+        mismatches.append("passport_number")
 
     return {
         "consistent": len(mismatches) == 0,
@@ -77,11 +80,12 @@ def check_mrz_viz_consistency(mrz: dict, viz: dict) -> dict:
 
 # ── Comparison helpers ─────────────────────────────────────────────────────────
 
+
 def _compare_name(mrz_val: Optional[str], viz_val: Optional[str], field: str) -> dict:
     if not mrz_val or not viz_val:
         return {"match": None, "reason": "missing data", "field": field}
-    m = ' '.join(mrz_val.upper().split())
-    v = ' '.join(viz_val.upper().split())
+    m = " ".join(mrz_val.upper().split())
+    v = " ".join(viz_val.upper().split())
     dist = levenshtein_distance(m, v)
     return {
         "match": dist <= _NAME_EDIT_THRESHOLD,
@@ -117,4 +121,5 @@ def _compare_exact(mrz_val: Optional[str], viz_val: Optional[str], field: str) -
 def _strip_date(d: str) -> str:
     """Remove separators, return 8-digit string DDMMYYYY."""
     import re
-    return re.sub(r'\D', '', d)
+
+    return re.sub(r"\D", "", d)

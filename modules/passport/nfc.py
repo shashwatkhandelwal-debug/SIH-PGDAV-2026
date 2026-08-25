@@ -17,13 +17,15 @@ References:
   - ICAO Doc 9303 Part 11 (Machine Readable Travel Documents)
   - https://www.icao.int/publications/Documents/9303_p11_cons_en.pdf
 """
+
+import hashlib
 import os
 import struct
-import hashlib
 from typing import Optional
 
 try:
     import nfc
+
     _NFC_AVAILABLE = True
 except ImportError:
     _NFC_AVAILABLE = False
@@ -46,7 +48,7 @@ def derive_bac_keys(mrz_line2: str) -> tuple[bytes, bytes]:
     mrz_info = mrz_line2[0:10] + mrz_line2[13:20] + mrz_line2[21:28]
 
     # K_seed = first 16 bytes of SHA-1(MRZ_information)
-    k_seed = hashlib.sha1(mrz_info.encode('ascii')).digest()[:16]
+    k_seed = hashlib.sha1(mrz_info.encode("ascii")).digest()[:16]
 
     k_enc = _derive_key(k_seed, counter=1)
     k_mac = _derive_key(k_seed, counter=2)
@@ -72,14 +74,16 @@ def perform_bac(mrz_line2: str, clf=None) -> dict:
         return {
             "success": False,
             "error": "nfcpy not installed  -  NFC unavailable",
-            "ks_enc": None, "ks_mac": None, "ssc": None,
+            "ks_enc": None,
+            "ks_mac": None,
+            "ssc": None,
         }
 
     try:
         k_enc, k_mac = derive_bac_keys(mrz_line2)
 
         # Step 1: SELECT application (e-passport AID)
-        AID = bytes.fromhex('A0000002471001')
+        AID = bytes.fromhex("A0000002471001")
         _send_apdu(clf, [0x00, 0xA4, 0x04, 0x0C, len(AID)] + list(AID))
 
         # Step 2: GET CHALLENGE  -  receive 8-byte nonce from chip
@@ -88,7 +92,7 @@ def perform_bac(mrz_line2: str, clf=None) -> dict:
 
         # Step 3: Generate terminal nonce and key material
         rnd_ifd = os.urandom(8)
-        k_ifd   = os.urandom(16)
+        k_ifd = os.urandom(16)
 
         # Step 4: Compute authentication token
         s = rnd_ifd + rnd_ic + k_ifd  # 32 bytes
@@ -109,8 +113,13 @@ def perform_bac(mrz_line2: str, clf=None) -> dict:
         k_ic = decrypted[16:32]
 
         if rnd_ifd_back != rnd_ifd:
-            return {"success": False, "error": "BAC mutual auth failed  -  RND_IFD mismatch",
-                    "ks_enc": None, "ks_mac": None, "ssc": None}
+            return {
+                "success": False,
+                "error": "BAC mutual auth failed  -  RND_IFD mismatch",
+                "ks_enc": None,
+                "ks_mac": None,
+                "ssc": None,
+            }
 
         # Step 7: Derive session keys
         k_seed_session = bytes(a ^ b for a, b in zip(k_ifd, k_ic))
@@ -118,19 +127,30 @@ def perform_bac(mrz_line2: str, clf=None) -> dict:
         ks_mac = _derive_key(k_seed_session, counter=2)
         ssc = rnd_ic[-4:] + rnd_ifd[-4:]  # Send Sequence Counter
 
-        return {"success": True, "ks_enc": ks_enc, "ks_mac": ks_mac,
-                "ssc": ssc, "error": None}
+        return {
+            "success": True,
+            "ks_enc": ks_enc,
+            "ks_mac": ks_mac,
+            "ssc": ssc,
+            "error": None,
+        }
 
     except Exception as e:
-        return {"success": False, "error": f"BAC error: {e}",
-                "ks_enc": None, "ks_mac": None, "ssc": None}
+        return {
+            "success": False,
+            "error": f"BAC error: {e}",
+            "ks_enc": None,
+            "ks_mac": None,
+            "ssc": None,
+        }
 
 
 # ── Cryptographic primitives ───────────────────────────────────────────────────
 
+
 def _derive_key(k_seed: bytes, counter: int) -> bytes:
     """ICAO 3DES key derivation from K_seed with counter suffix."""
-    data = k_seed + struct.pack('>I', counter)  # 20 bytes
+    data = k_seed + struct.pack(">I", counter)  # 20 bytes
     digest = hashlib.sha1(data).digest()
     key = digest[:16]
     return _adjust_parity(key)
@@ -143,7 +163,7 @@ def _adjust_parity(key: bytes) -> bytes:
         b = result[i]
         # Count bits, adjust LSB to make total bits odd
         b = b & 0xFE
-        bits = bin(b).count('1')
+        bits = bin(b).count("1")
         if bits % 2 == 0:
             b |= 0x01
         result[i] = b
@@ -151,40 +171,54 @@ def _adjust_parity(key: bytes) -> bytes:
 
 
 def _3des_encrypt(key: bytes, data: bytes) -> bytes:
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
     k = key + key[:8]  # 2TDEA → 3TDEA (24-byte key)
-    cipher = Cipher(algorithms.TripleDES(k), modes.CBC(b'\x00' * 8), backend=default_backend())
+    cipher = Cipher(
+        algorithms.TripleDES(k), modes.CBC(b"\x00" * 8), backend=default_backend()
+    )
     enc = cipher.encryptor()
     return enc.update(data) + enc.finalize()
 
 
 def _3des_decrypt(key: bytes, data: bytes) -> bytes:
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
     k = key + key[:8]
-    cipher = Cipher(algorithms.TripleDES(k), modes.CBC(b'\x00' * 8), backend=default_backend())
+    cipher = Cipher(
+        algorithms.TripleDES(k), modes.CBC(b"\x00" * 8), backend=default_backend()
+    )
     dec = cipher.decryptor()
     return dec.update(data) + dec.finalize()
 
 
 def _retail_mac(key: bytes, data: bytes) -> bytes:
     """ISO 9797-1 MAC Algorithm 3 (Retail MAC) with 8-byte output."""
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
     # Pad to 8-byte boundary
     pad_len = 8 - (len(data) % 8)
-    data = data + b'\x80' + b'\x00' * (pad_len - 1)
+    data = data + b"\x80" + b"\x00" * (pad_len - 1)
 
-    k1 = key[:8]; k2 = key[8:16]
-    iv = b'\x00' * 8
+    k1 = key[:8]
+    k2 = key[8:16]
+    iv = b"\x00" * 8
     # DES-CBC with k1
-    cipher1 = Cipher(algorithms.TripleDES(k1 * 3), modes.CBC(iv), backend=default_backend())
+    cipher1 = Cipher(
+        algorithms.TripleDES(k1 * 3), modes.CBC(iv), backend=default_backend()
+    )
     enc1 = cipher1.encryptor()
     intermediate = enc1.update(data) + enc1.finalize()
     block = intermediate[-8:]
     # 3DES with full key on final block
-    cipher2 = Cipher(algorithms.TripleDES(key + key[:8]), modes.CBC(b'\x00' * 8), backend=default_backend())
+    cipher2 = Cipher(
+        algorithms.TripleDES(key + key[:8]),
+        modes.CBC(b"\x00" * 8),
+        backend=default_backend(),
+    )
     enc2 = cipher2.encryptor()
     return (enc2.update(block) + enc2.finalize())[:8]
 

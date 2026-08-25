@@ -20,25 +20,27 @@ References:
   - RFC 5652 (CMS / SignedData structure)
   - ICAO 9303 Part 11, Section 5
 """
+
 import hashlib
 import os
 from typing import Optional
 
 try:
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
-    from cryptography.exceptions import InvalidSignature
-    from cryptography.x509 import load_pem_x509_certificate, load_der_x509_certificate
     import asn1crypto.cms as cms
     import asn1crypto.x509 as asn1_x509
+    from cryptography import x509
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.x509 import load_der_x509_certificate, load_pem_x509_certificate
+
     _CRYPTO_AVAILABLE = True
 except ImportError:
     _CRYPTO_AVAILABLE = False
 
 # Path to bundled ICAO Master List (XML) and cached CSCA certs
 _MASTER_LIST_PATH = os.path.join(
-    os.path.dirname(__file__), '..', '..', 'shared', 'certs', 'icao_masterlist.xml'
+    os.path.dirname(__file__), "..", "..", "shared", "certs", "icao_masterlist.xml"
 )
 
 
@@ -48,35 +50,45 @@ def perform_passive_auth(chip_data: dict) -> dict:
     """
     print("[DEBUG] Entered perform_passive_auth in modules/passport/passive_auth.py")
     if not _CRYPTO_AVAILABLE:
-        return {"valid": False, "error": "cryptography / asn1crypto not installed",
-                "chain_valid": None, "dg_hashes_valid": None, "failed_dgs": []}
+        return {
+            "valid": False,
+            "error": "cryptography / asn1crypto not installed",
+            "chain_valid": None,
+            "dg_hashes_valid": None,
+            "failed_dgs": [],
+        }
 
-    sod_bytes = chip_data.get('sod')
-    data_groups = chip_data.get('data_groups', {})
+    sod_bytes = chip_data.get("sod")
+    data_groups = chip_data.get("data_groups", {})
 
     if not sod_bytes:
-        return {"valid": False, "error": "SOD not provided",
-                "chain_valid": None, "dg_hashes_valid": None, "failed_dgs": []}
+        return {
+            "valid": False,
+            "error": "SOD not provided",
+            "chain_valid": None,
+            "dg_hashes_valid": None,
+            "failed_dgs": [],
+        }
 
     try:
         # Step 1: Parse SOD as CMS ContentInfo / SignedData
         content_info = cms.ContentInfo.load(sod_bytes)
-        signed_data = content_info['content']
+        signed_data = content_info["content"]
 
         # Step 2: Extract signer certificate (DSC)
-        dsc_raw = signed_data['certificates'][0].chosen.dump()
+        dsc_raw = signed_data["certificates"][0].chosen.dump()
         dsc = load_der_x509_certificate(dsc_raw)
 
         # Step 3: Verify DSC chains to a trusted CSCA from the ICAO Master List
         chain_valid = _verify_cert_chain(dsc)
 
         # Step 4: Verify SOD signature using DSC public key
-        signer_info = signed_data['signer_infos'][0]
-        dg_hash_bytes = signer_info['signed_attrs'].dump()
+        signer_info = signed_data["signer_infos"][0]
+        dg_hash_bytes = signer_info["signed_attrs"].dump()
 
         try:
             dsc.public_key().verify(
-                bytes(signer_info['signature']),
+                bytes(signer_info["signature"]),
                 dg_hash_bytes,
                 padding.PKCS1v15(),
                 hashes.SHA256(),
@@ -86,7 +98,7 @@ def perform_passive_auth(chip_data: dict) -> dict:
             sod_sig_valid = False
 
         # Step 5: Verify each data group hash matches what's in the SOD
-        encap = signed_data['encap_content_info']['content'].parsed
+        encap = signed_data["encap_content_info"]["content"].parsed
         dg_hashes = _parse_dg_hashes(encap)
 
         failed_dgs = []
@@ -113,13 +125,19 @@ def perform_passive_auth(chip_data: dict) -> dict:
         }
 
     except Exception as e:
-        return {"valid": False, "error": f"Passive Auth error: {e}",
-                "chain_valid": None, "dg_hashes_valid": None, "failed_dgs": []}
+        return {
+            "valid": False,
+            "error": f"Passive Auth error: {e}",
+            "chain_valid": None,
+            "dg_hashes_valid": None,
+            "failed_dgs": [],
+        }
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _verify_cert_chain(dsc: 'x509.Certificate') -> bool:
+
+def _verify_cert_chain(dsc: "x509.Certificate") -> bool:
     """
     Verify the DSC was signed by a CSCA in the ICAO Master List.
     Returns True if a valid chain is found.
@@ -148,12 +166,14 @@ def _load_master_list_certs() -> list:
         return []
     try:
         import xml.etree.ElementTree as ET
+
         tree = ET.parse(_MASTER_LIST_PATH)
         root = tree.getroot()
-        ns = {'icao': 'urn:ietf:params:xml:ns:mrtdpkd'}
+        ns = {"icao": "urn:ietf:params:xml:ns:mrtdpkd"}
         certs = []
-        for cert_el in root.findall('.//icao:certificate', ns):
+        for cert_el in root.findall(".//icao:certificate", ns):
             import base64
+
             der = base64.b64decode(cert_el.text.strip())
             certs.append(load_der_x509_certificate(der))
         return certs
@@ -168,9 +188,9 @@ def _parse_dg_hashes(lds_security_obj) -> dict:
     """
     dg_hashes = {}
     try:
-        for dg_hash in lds_security_obj['data_group_hash_values']:
-            num = int(dg_hash['data_group_number'])
-            h   = bytes(dg_hash['data_group_hash_value'])
+        for dg_hash in lds_security_obj["data_group_hash_values"]:
+            num = int(dg_hash["data_group_number"])
+            h = bytes(dg_hash["data_group_hash_value"])
             dg_hashes[num] = h
     except Exception:
         pass

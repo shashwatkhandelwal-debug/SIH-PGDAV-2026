@@ -9,11 +9,13 @@ Extracts:
   - Gender
   - Address
 """
+
 import re
+from typing import Optional
+
 import easyocr
 import numpy as np
 from PIL import Image
-from typing import Optional
 
 _reader: Optional[easyocr.Reader] = None
 
@@ -22,7 +24,7 @@ def _get_reader() -> easyocr.Reader:
     """Lazy-init EasyOCR reader (supports English + Hindi)."""
     global _reader
     if _reader is None:
-        _reader = easyocr.Reader(['en', 'hi'], gpu=False)
+        _reader = easyocr.Reader(["en", "hi"], gpu=False)
     return _reader
 
 
@@ -63,21 +65,22 @@ def extract_aadhaar_fields(image: np.ndarray) -> dict:
 
 # ── Private helpers ────────────────────────────────────────────────────────────
 
+
 def _extract_uid(text: str) -> Optional[str]:
     """Extract 12-digit UID, stripping spaces."""
-    match = re.search(r'\b(\d{4}[\s\-]?\d{4}[\s\-]?\d{4})\b', text)
+    match = re.search(r"\b(\d{4}[\s\-]?\d{4}[\s\-]?\d{4})\b", text)
     if match:
-        return re.sub(r'[\s\-]', '', match.group(1))
+        return re.sub(r"[\s\-]", "", match.group(1))
     return None
 
 
 def _extract_dob(text: str) -> Optional[str]:
     """Extract DOB in DD/MM/YYYY format."""
-    match = re.search(r'\b(\d{2}[/\-]\d{2}[/\-]\d{4})\b', text)
+    match = re.search(r"\b(\d{2}[/\-]\d{2}[/\-]\d{4})\b", text)
     if match:
-        return match.group(1).replace('-', '/')
+        return match.group(1).replace("-", "/")
     # Handle 'Year of Birth: YYYY' format on older cards
-    match = re.search(r'(?:Year of Birth|YOB)[:\s]+(\d{4})', text, re.IGNORECASE)
+    match = re.search(r"(?:Year of Birth|YOB)[:\s]+(\d{4})", text, re.IGNORECASE)
     if match:
         return match.group(1)
     return None
@@ -86,12 +89,12 @@ def _extract_dob(text: str) -> Optional[str]:
 def _extract_gender(text: str) -> Optional[str]:
     """Detect gender from printed text."""
     text_upper = text.upper()
-    if 'MALE' in text_upper and 'FE' not in text_upper:
-        return 'MALE'
-    if 'FEMALE' in text_upper:
-        return 'FEMALE'
-    if 'TRANSGENDER' in text_upper:
-        return 'TRANSGENDER'
+    if "MALE" in text_upper and "FE" not in text_upper:
+        return "MALE"
+    if "FEMALE" in text_upper:
+        return "FEMALE"
+    if "TRANSGENDER" in text_upper:
+        return "TRANSGENDER"
     return None
 
 
@@ -100,9 +103,20 @@ def _extract_name_english(text: str) -> Optional[str]:
     Heuristic: Name is typically the longest consecutive all-caps / Title Case
     sequence before or after the DOB line, excluding common label words.
     """
-    EXCLUDE = {'GOVERNMENT', 'INDIA', 'UIDAI', 'AADHAAR', 'MALE', 'FEMALE',
-               'DATE', 'BIRTH', 'ADDRESS', 'YEAR', 'DOB'}
-    candidates = re.findall(r'\b[A-Z][a-z]+(?:\s[A-Z][a-z]+){1,4}\b', text)
+    EXCLUDE = {
+        "GOVERNMENT",
+        "INDIA",
+        "UIDAI",
+        "AADHAAR",
+        "MALE",
+        "FEMALE",
+        "DATE",
+        "BIRTH",
+        "ADDRESS",
+        "YEAR",
+        "DOB",
+    }
+    candidates = re.findall(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+){1,4}\b", text)
     for candidate in candidates:
         if not any(w.upper() in EXCLUDE for w in candidate.split()):
             return candidate
@@ -115,10 +129,10 @@ def _extract_name_hindi(results: list) -> Optional[str]:
     EasyOCR with 'hi' lang returns Devanagari text separately.
     """
     devanagari_texts = []
-    for (bbox, text, conf) in results:
-        if re.search(r'[\u0900-\u097F]', text):
+    for bbox, text, conf in results:
+        if re.search(r"[\u0900-\u097F]", text):
             devanagari_texts.append(text.strip())
-    return ' '.join(devanagari_texts) if devanagari_texts else None
+    return " ".join(devanagari_texts) if devanagari_texts else None
 
 
 def _extract_address(text: str) -> Optional[str]:
@@ -126,7 +140,9 @@ def _extract_address(text: str) -> Optional[str]:
     Address extraction: text following 'Address:' or 'S/O', 'D/O', 'C/O' markers.
     Returns the tail of the text as a best-effort address.
     """
-    match = re.search(r'(?:Address|S/O|D/O|C/O)[:\s]+(.+)', text, re.IGNORECASE | re.DOTALL)
+    match = re.search(
+        r"(?:Address|S/O|D/O|C/O)[:\s]+(.+)", text, re.IGNORECASE | re.DOTALL
+    )
     if match:
         return match.group(1).strip()[:300]  # Cap at 300 chars
     return None

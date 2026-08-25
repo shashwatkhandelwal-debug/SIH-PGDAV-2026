@@ -5,9 +5,11 @@ Shared image preprocessing utilities.
 - Image loading and format normalization
 - Region cropping helpers
 """
+
+from typing import Optional
+
 import cv2
 import numpy as np
-from typing import Optional
 
 
 def load_image(source) -> Optional[np.ndarray]:
@@ -25,7 +27,9 @@ def load_image(source) -> Optional[np.ndarray]:
     return None
 
 
-def correct_perspective(image: np.ndarray, output_size: tuple = (800, 550)) -> np.ndarray:
+def correct_perspective(
+    image: np.ndarray, output_size: tuple = (800, 550)
+) -> np.ndarray:
     """
     Detect document corners and apply perspective correction.
 
@@ -39,20 +43,20 @@ def correct_perspective(image: np.ndarray, output_size: tuple = (800, 550)) -> n
     Returns:
         Perspective-corrected BGR numpy array or original if correction fails.
     """
-    gray   = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blur   = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges  = cv2.Canny(blur, 75, 200)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blur, 75, 200)
 
     # Dilate to close small gaps in document border
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    edges  = cv2.dilate(edges, kernel, iterations=1)
+    edges = cv2.dilate(edges, kernel, iterations=1)
 
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
 
     doc_corners = None
     for c in contours:
-        peri  = cv2.arcLength(c, True)
+        peri = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, 0.02 * peri, True)
         if len(approx) == 4:
             # Minimum area check  -  reject tiny quads
@@ -64,11 +68,11 @@ def correct_perspective(image: np.ndarray, output_size: tuple = (800, 550)) -> n
         return image  # Fallback: return original
 
     ordered = _order_corners(doc_corners)
-    w, h    = output_size
-    dst     = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], dtype=np.float32)
+    w, h = output_size
+    dst = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], dtype=np.float32)
 
-    M       = cv2.getPerspectiveTransform(ordered, dst)
-    warped  = cv2.warpPerspective(image, M, (w, h))
+    M = cv2.getPerspectiveTransform(ordered, dst)
+    warped = cv2.warpPerspective(image, M, (w, h))
     return warped
 
 
@@ -94,12 +98,12 @@ def _order_corners(pts: np.ndarray) -> np.ndarray:
     """
     Order 4 corner points as: [top-left, top-right, bottom-right, bottom-left].
     """
-    rect  = np.zeros((4, 2), dtype=np.float32)
-    s     = pts.sum(axis=1)
-    diff  = np.diff(pts, axis=1).ravel()
+    rect = np.zeros((4, 2), dtype=np.float32)
+    s = pts.sum(axis=1)
+    diff = np.diff(pts, axis=1).ravel()
 
-    rect[0] = pts[np.argmin(s)]     # TL: smallest x+y
-    rect[2] = pts[np.argmax(s)]     # BR: largest x+y
+    rect[0] = pts[np.argmin(s)]  # TL: smallest x+y
+    rect[2] = pts[np.argmax(s)]  # BR: largest x+y
     rect[1] = pts[np.argmin(diff)]  # TR: smallest y-x
     rect[3] = pts[np.argmax(diff)]  # BL: largest y-x
     return rect

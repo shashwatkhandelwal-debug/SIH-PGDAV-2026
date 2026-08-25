@@ -1,7 +1,7 @@
 # AI-Based Fake Identity & Document Screening System
-### SIH 2026 — Problem Statement 6188 | Ministry of Home Affairs — Sashastra Seema Bal (SSB)
+### SIH 2026 - Problem Statement 6188 | Ministry of Home Affairs - Sashastra Seema Bal (SSB)
 
-An AI-powered document screening platform for **land border checkpoints** — bringing camera-based, cryptographically-backed document verification to posts that currently have no automated infrastructure.
+An AI-powered document screening platform for **land border checkpoints** - bringing camera-based, cryptographically-backed document verification to posts that currently have no automated infrastructure.
 
 ---
 
@@ -42,7 +42,7 @@ frontend/           # Streamlit UI (phone-browser compatible)
 ## Key Technical Highlights
 
 - **Cryptographic authenticity**: UIDAI RSA-2048 signature verification on Aadhaar QR; ICAO Passive Authentication against ICAO Master List; Active Authentication (anti-chip-cloning challenge-response)
-- **Cross-source consistency**: QR↔OCR, MRZ↔VIZ, Visa↔Passport binding — defends against copy-paste attacks on genuine signed elements
+- **Cross-source consistency**: QR↔OCR, MRZ↔VIZ, Visa↔Passport binding: defends against copy-paste attacks on genuine signed elements
 - **Identity graph**: ArcFace embeddings stored in FAISS, flags same face screened under multiple identities across visits
 - **Explainable scoring**: Weighted formula (not black-box ML) with LLM plain-language officer summary
 - **Zero image storage**: Only 512-dim embedding vectors stored, never photos

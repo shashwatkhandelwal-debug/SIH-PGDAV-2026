@@ -14,12 +14,14 @@ The QR payload structure (new format):
 
 LP = length-prefixed UTF-8 string (2-byte big-endian length header)
 """
+
 import struct
 import xml.etree.ElementTree as ET
-from pyzbar.pyzbar import decode as pyzbar_decode
-from PIL import Image
-import numpy as np
 from typing import Optional
+
+import numpy as np
+from PIL import Image
+from pyzbar.pyzbar import decode as pyzbar_decode
 
 
 def decode_aadhaar_qr(image: np.ndarray) -> dict:
@@ -36,7 +38,7 @@ def decode_aadhaar_qr(image: np.ndarray) -> dict:
     qr_data: Optional[bytes] = None
     region = None
     for obj in decoded_objects:
-        if obj.type == 'QRCODE':
+        if obj.type == "QRCODE":
             qr_data = obj.data
             r = obj.rect
             region = (r.left, r.top, r.left + r.width, r.top + r.height)
@@ -48,8 +50,8 @@ def decode_aadhaar_qr(image: np.ndarray) -> dict:
     # Detect format
     res = None
     try:
-        text = qr_data.decode('utf-8')
-        if text.strip().startswith('<'):
+        text = qr_data.decode("utf-8")
+        if text.strip().startswith("<"):
             res = _parse_xml_format(text, qr_data)
     except UnicodeDecodeError:
         pass  # Binary format
@@ -63,37 +65,44 @@ def decode_aadhaar_qr(image: np.ndarray) -> dict:
 
 # ── XML format (pre-2017) ──────────────────────────────────────────────────────
 
+
 def _parse_xml_format(text: str, raw: bytes) -> dict:
     """Parse old-format Aadhaar QR (XML string + appended signature)."""
     try:
         root = ET.fromstring(text)
         fields = {
-            "uid_last4": root.get('uid', ''),
-            "name": root.get('name', ''),
-            "dob": root.get('dob', ''),
-            "gender": root.get('gender', ''),
-            "co": root.get('co', ''),
-            "house": root.get('house', ''),
-            "street": root.get('street', ''),
-            "lm": root.get('lm', ''),
-            "loc": root.get('loc', ''),
-            "vtc": root.get('vtc', ''),
-            "subdist": root.get('subdist', ''),
-            "dist": root.get('dist', ''),
-            "state": root.get('state', ''),
-            "pc": root.get('pc', ''),
-            "po": root.get('po', ''),
+            "uid_last4": root.get("uid", ""),
+            "name": root.get("name", ""),
+            "dob": root.get("dob", ""),
+            "gender": root.get("gender", ""),
+            "co": root.get("co", ""),
+            "house": root.get("house", ""),
+            "street": root.get("street", ""),
+            "lm": root.get("lm", ""),
+            "loc": root.get("loc", ""),
+            "vtc": root.get("vtc", ""),
+            "subdist": root.get("subdist", ""),
+            "dist": root.get("dist", ""),
+            "state": root.get("state", ""),
+            "pc": root.get("pc", ""),
+            "po": root.get("po", ""),
         }
         # Signature is appended after the XML, last 256 bytes
         signature = raw[-256:]
         payload = raw[:-256]
-        return {"format": "xml", "fields": fields, "raw_payload": payload,
-                "signature": signature, "error": None}
+        return {
+            "format": "xml",
+            "fields": fields,
+            "raw_payload": payload,
+            "signature": signature,
+            "error": None,
+        }
     except ET.ParseError as e:
         return {"format": "xml", "fields": {}, "error": str(e)}
 
 
 # ── Binary format (post-2017) ──────────────────────────────────────────────────
+
 
 def _parse_binary_format(data: bytes) -> dict:
     """Parse new-format Aadhaar QR (packed binary payload)."""
@@ -102,20 +111,25 @@ def _parse_binary_format(data: bytes) -> dict:
         payload = data[:-256]
 
         offset = 0
-        email_mobile_flag = data[offset]; offset += 1
-        ref_id = data[offset:offset + 8].decode('ascii', errors='replace'); offset += 8
+        email_mobile_flag = data[offset]
+        offset += 1
+        ref_id = data[offset : offset + 8].decode("ascii", errors="replace")
+        offset += 8
 
         name, offset = _read_lp_string(data, offset)
-        dob = data[offset:offset + 10].decode('ascii', errors='replace'); offset += 10
-        gender_byte = data[offset]; offset += 1
-        gender = {1: 'M', 2: 'F', 3: 'T'}.get(gender_byte, 'U')
+        dob = data[offset : offset + 10].decode("ascii", errors="replace")
+        offset += 10
+        gender_byte = data[offset]
+        offset += 1
+        gender = {1: "M", 2: "F", 3: "T"}.get(gender_byte, "U")
 
         care_of, offset = _read_lp_string(data, offset)
         district, offset = _read_lp_string(data, offset)
         landmark, offset = _read_lp_string(data, offset)
         house, offset = _read_lp_string(data, offset)
         location, offset = _read_lp_string(data, offset)
-        pincode = data[offset:offset + 6].decode('ascii', errors='replace'); offset += 6
+        pincode = data[offset : offset + 6].decode("ascii", errors="replace")
+        offset += 6
         postoffice, offset = _read_lp_string(data, offset)
         state, offset = _read_lp_string(data, offset)
         street, offset = _read_lp_string(data, offset)
@@ -124,7 +138,7 @@ def _parse_binary_format(data: bytes) -> dict:
 
         mobile_last4 = None
         if email_mobile_flag in (1, 3):
-            mobile_last4 = data[offset:offset + 4].decode('ascii', errors='replace')
+            mobile_last4 = data[offset : offset + 4].decode("ascii", errors="replace")
             offset += 4
 
         fields = {
@@ -146,8 +160,13 @@ def _parse_binary_format(data: bytes) -> dict:
             "mobile_last4": mobile_last4,
         }
 
-        return {"format": "binary", "fields": fields, "raw_payload": payload,
-                "signature": signature, "error": None}
+        return {
+            "format": "binary",
+            "fields": fields,
+            "raw_payload": payload,
+            "signature": signature,
+            "error": None,
+        }
 
     except Exception as e:
         return {"format": "binary", "fields": {}, "error": f"Parse error: {e}"}
@@ -155,7 +174,7 @@ def _parse_binary_format(data: bytes) -> dict:
 
 def _read_lp_string(data: bytes, offset: int) -> tuple[str, int]:
     """Read a 2-byte big-endian length-prefixed UTF-8 string."""
-    length = struct.unpack_from('>H', data, offset)[0]
+    length = struct.unpack_from(">H", data, offset)[0]
     offset += 2
-    text = data[offset:offset + length].decode('utf-8', errors='replace')
+    text = data[offset : offset + length].decode("utf-8", errors="replace")
     return text, offset + length

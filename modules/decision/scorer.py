@@ -4,6 +4,7 @@ Decision Scorer - Risk assessment calculations.
 This module computes the final risk score based on checksum validation,
 signature verification, cross field consistency and ELA forensics.
 """
+
 from typing import Any, Optional
 
 # ELA normalization threshold constant.
@@ -12,7 +13,9 @@ from typing import Any, Optional
 ELA_NORMALIZATION_THRESHOLD = 15.0
 
 
-def compute_score(check_results: dict[str, Any], doc_type: Optional[str] = None) -> dict:
+def compute_score(
+    check_results: dict[str, Any], doc_type: Optional[str] = None
+) -> dict:
     """
     Compute the risk score (0 to 100) based on checked fields.
 
@@ -20,9 +23,15 @@ def compute_score(check_results: dict[str, Any], doc_type: Optional[str] = None)
     """
     # Infer doc_type if not provided explicitly
     if not doc_type:
-        if "visa_rule_validation" in check_results or "visa_passport_binding" in check_results:
+        if (
+            "visa_rule_validation" in check_results
+            or "visa_passport_binding" in check_results
+        ):
             doc_type = "VISA"
-        elif "passport_mrz_checksums" in check_results or "passport_mrz_viz_consistency" in check_results:
+        elif (
+            "passport_mrz_checksums" in check_results
+            or "passport_mrz_viz_consistency" in check_results
+        ):
             doc_type = "PASSPORT"
         else:
             doc_type = "AADHAAR"
@@ -47,14 +56,20 @@ def compute_score(check_results: dict[str, Any], doc_type: Optional[str] = None)
         # Since Visa stickers do not contain printed check digits or signed QR codes,
         # the standard checksum and signature checks are replaced.
         # Component 13 rule validation and Component 14 passport binding are used instead.
-        
+
         # Component 13: Visa Rule Validation
         rule_val = check_results.get("visa_rule_validation", {})
-        rule_violation_fail = 1.0 if (isinstance(rule_val, dict) and not rule_val.get("valid", True)) else 0.0
+        rule_violation_fail = (
+            1.0
+            if (isinstance(rule_val, dict) and not rule_val.get("valid", True))
+            else 0.0
+        )
 
         # Component 14: Visa Passport Binding
         bind = check_results.get("visa_passport_binding", {})
-        binding_fail = 1.0 if (isinstance(bind, dict) and bind.get("score") == 0.0) else 0.0
+        binding_fail = (
+            1.0 if (isinstance(bind, dict) and bind.get("score") == 0.0) else 0.0
+        )
 
         # Cross-field Inconsistency
         cross_field_inconsistent = binding_fail
@@ -70,7 +85,7 @@ def compute_score(check_results: dict[str, Any], doc_type: Optional[str] = None)
             "rule_violation_contribution": round(term_rule_violation, 2),
             "binding_contribution": round(term_binding, 2),
             "cross_field_contribution": round(term_cross_field, 2),
-            "ela_contribution": round(term_ela, 2)
+            "ela_contribution": round(term_ela, 2),
         }
     elif doc_type == "PASSPORT":
         # 1. Checksum Failure
@@ -90,7 +105,7 @@ def compute_score(check_results: dict[str, Any], doc_type: Optional[str] = None)
         # 3. Authenticity Failure (based on verification_tier)
         verification_tier = check_results.get("verification_tier", "CHIP_UNAVAILABLE")
         authenticity_fail = 0.0
-        
+
         if verification_tier == "CHIP_VERIFIED":
             pa = check_results.get("passport_passive_auth")
             aa = check_results.get("passport_active_auth")
@@ -110,21 +125,21 @@ def compute_score(check_results: dict[str, Any], doc_type: Optional[str] = None)
             # Max possible pre-rescale sum is 30 (checksum) + 20 (cross-field) + 20 (ELA) = 70.
             raw_score = term_checksum + term_cross_field + term_ela
             overall_score = min(100.0, max(0.0, raw_score * (100.0 / 70.0)))
-            
+
             component_breakdown = {
                 "checksum_contribution": round(term_checksum * (100.0 / 70.0), 2),
                 "cross_field_contribution": round(term_cross_field * (100.0 / 70.0), 2),
-                "ela_contribution": round(term_ela * (100.0 / 70.0), 2)
+                "ela_contribution": round(term_ela * (100.0 / 70.0), 2),
             }
         else:
             raw_score = term_checksum + term_cross_field + term_authenticity + term_ela
             overall_score = min(100.0, max(0.0, raw_score))
-            
+
             component_breakdown = {
                 "checksum_contribution": round(term_checksum, 2),
                 "chip_authenticity_contribution": round(term_authenticity, 2),
                 "cross_field_contribution": round(term_cross_field, 2),
-                "ela_contribution": round(term_ela, 2)
+                "ela_contribution": round(term_ela, 2),
             }
     else:
         # AADHAAR
@@ -160,7 +175,7 @@ def compute_score(check_results: dict[str, Any], doc_type: Optional[str] = None)
             "checksum_contribution": round(term_checksum, 2),
             "signature_contribution": round(term_signature, 2),
             "cross_field_contribution": round(term_cross_field, 2),
-            "ela_contribution": round(term_ela, 2)
+            "ela_contribution": round(term_ela, 2),
         }
 
     # Determine status based on thresholds

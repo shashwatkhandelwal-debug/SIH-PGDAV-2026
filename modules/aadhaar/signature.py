@@ -10,16 +10,18 @@ UIDAI certificate source:
   https://resident.uidai.gov.in/uidai_qr_offline_cert
   (Bundle the .cer/.pem file locally  -  see shared/certs/)
 """
+
 import os
+from datetime import datetime, timezone
+
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.x509 import load_pem_x509_certificate, load_der_x509_certificate
-from cryptography.exceptions import InvalidSignature
-from datetime import datetime, timezone
+from cryptography.x509 import load_der_x509_certificate, load_pem_x509_certificate
 
 # Path to bundled UIDAI certificate (relative to project root)
 _CERT_PATH = os.path.join(
-    os.path.dirname(__file__), '..', '..', 'shared', 'certs', 'uidai_offline_pub.cer'
+    os.path.dirname(__file__), "..", "..", "shared", "certs", "uidai_offline_pub.cer"
 )
 
 
@@ -38,15 +40,27 @@ def verify_uidai_signature(raw_payload: bytes, signature: bytes) -> dict:
     try:
         cert = _load_uidai_cert()
     except FileNotFoundError:
-        return {"valid": False, "error": "UIDAI certificate not found at shared/certs/", "cert_expired": None}
+        return {
+            "valid": False,
+            "error": "UIDAI certificate not found at shared/certs/",
+            "cert_expired": None,
+        }
     except Exception as e:
-        return {"valid": False, "error": f"Certificate load error: {e}", "cert_expired": None}
+        return {
+            "valid": False,
+            "error": f"Certificate load error: {e}",
+            "cert_expired": None,
+        }
 
     # Check certificate validity period
     now = datetime.now(timezone.utc)
     cert_expired = now > cert.not_valid_after_utc
     if cert_expired:
-        return {"valid": False, "error": "UIDAI certificate has expired", "cert_expired": True}
+        return {
+            "valid": False,
+            "error": "UIDAI certificate has expired",
+            "cert_expired": True,
+        }
 
     public_key = cert.public_key()
 
@@ -59,16 +73,24 @@ def verify_uidai_signature(raw_payload: bytes, signature: bytes) -> dict:
         )
         return {"valid": True, "error": None, "cert_expired": False}
     except InvalidSignature:
-        return {"valid": False, "error": "Signature mismatch  -  QR data not issued by UIDAI", "cert_expired": False}
+        return {
+            "valid": False,
+            "error": "Signature mismatch  -  QR data not issued by UIDAI",
+            "cert_expired": False,
+        }
     except Exception as e:
-        return {"valid": False, "error": f"Verification error: {e}", "cert_expired": False}
+        return {
+            "valid": False,
+            "error": f"Verification error: {e}",
+            "cert_expired": False,
+        }
 
 
 def _load_uidai_cert():
     """Load UIDAI certificate from the bundled file (PEM or DER)."""
-    with open(_CERT_PATH, 'rb') as f:
+    with open(_CERT_PATH, "rb") as f:
         cert_data = f.read()
-    if cert_data.startswith(b'-----BEGIN'):
+    if cert_data.startswith(b"-----BEGIN"):
         return load_pem_x509_certificate(cert_data)
     else:
         return load_der_x509_certificate(cert_data)

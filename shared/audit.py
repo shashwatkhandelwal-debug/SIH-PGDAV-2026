@@ -19,12 +19,13 @@ Does NOT store:
 Only field values and scores are stored, consistent with the zero-image-
 storage principle and avoiding biometric data regulation requirements.
 """
+
+import json
 import os
 import sqlite3
-import json
 from datetime import datetime
 
-_DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'audit.db')
+_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "audit.db")
 
 
 def log_screening(
@@ -34,9 +35,9 @@ def log_screening(
     risk_level: str,
     total_score: float,
     failed_checks: list,
-    checkpoint_id: str = 'default',
-    officer_id: str = 'unknown',
-    summary: str = '',
+    checkpoint_id: str = "default",
+    officer_id: str = "unknown",
+    summary: str = "",
 ) -> int:
     """
     Log a completed screening event to the audit database.
@@ -56,23 +57,26 @@ def log_screening(
         Audit record ID (int).
     """
     db = _get_db()
-    cur = db.execute("""
+    cur = db.execute(
+        """
         INSERT INTO audit_log
           (timestamp, doc_type, doc_number, name, risk_level, total_score,
            failed_checks, checkpoint_id, officer_id, summary)
         VALUES (?,?,?,?,?,?,?,?,?,?)
-    """, (
-        datetime.utcnow().isoformat(),
-        doc_type,
-        doc_number,
-        name,
-        risk_level,
-        round(total_score, 1),
-        json.dumps(failed_checks),
-        checkpoint_id,
-        officer_id,
-        summary,
-    ))
+    """,
+        (
+            datetime.utcnow().isoformat(),
+            doc_type,
+            doc_number,
+            name,
+            risk_level,
+            round(total_score, 1),
+            json.dumps(failed_checks),
+            checkpoint_id,
+            officer_id,
+            summary,
+        ),
+    )
     db.commit()
     record_id = cur.lastrowid
     db.close()
@@ -85,10 +89,12 @@ def get_recent_screenings(limit: int = 50, checkpoint_id: str = None) -> list:
     if checkpoint_id:
         cur = db.execute(
             "SELECT * FROM audit_log WHERE checkpoint_id=? ORDER BY timestamp DESC LIMIT ?",
-            (checkpoint_id, limit)
+            (checkpoint_id, limit),
         )
     else:
-        cur = db.execute("SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?", (limit,))
+        cur = db.execute(
+            "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?", (limit,)
+        )
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, row)) for row in cur.fetchall()]
     db.close()
@@ -98,12 +104,12 @@ def get_recent_screenings(limit: int = 50, checkpoint_id: str = None) -> list:
 def get_flagged_screenings(risk_levels: list = None) -> list:
     """Retrieve all HIGH/MEDIUM risk screenings for investigation."""
     if risk_levels is None:
-        risk_levels = ['HIGH', 'MEDIUM']
-    placeholders = ','.join('?' * len(risk_levels))
+        risk_levels = ["HIGH", "MEDIUM"]
+    placeholders = ",".join("?" * len(risk_levels))
     db = _get_db()
     cur = db.execute(
         f"SELECT * FROM audit_log WHERE risk_level IN ({placeholders}) ORDER BY timestamp DESC",
-        risk_levels
+        risk_levels,
     )
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, row)) for row in cur.fetchall()]

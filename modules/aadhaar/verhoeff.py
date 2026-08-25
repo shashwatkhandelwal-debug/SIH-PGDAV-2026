@@ -53,7 +53,7 @@ def verhoeff_validate(number: str) -> bool:
     Returns:
         True if checksum is valid, False otherwise.
     """
-    number = number.replace(' ', '').replace('-', '')
+    number = number.replace(" ", "").replace("-", "")
     if not number.isdigit() or len(number) != 12:
         return False
 
@@ -73,7 +73,7 @@ def verhoeff_generate(number: str) -> str:
     Returns:
         Original number with check digit appended.
     """
-    number = number.replace(' ', '').replace('-', '')
+    number = number.replace(" ", "").replace("-", "")
     c = 0
     for i, digit in enumerate(reversed(number)):
         c = _D[c][_P[(i + 1) % 8][int(digit)]]

@@ -19,18 +19,21 @@ Why ArcFace:
   separation in the embedding space. This gives better verification accuracy
   on unseen identities  -  which is the entire use case here (inference only).
 """
-import numpy as np
+
 from typing import Optional
+
+import numpy as np
 
 try:
     from deepface import DeepFace
+
     _DEEPFACE_AVAILABLE = True
 except ImportError:
     _DEEPFACE_AVAILABLE = False
 
 # Preferred model  -  change to 'Facenet512' if insightface fails to install
-_MODEL_NAME = 'ArcFace'
-_BACKEND    = 'retinaface'   # Best face detector; fallback: 'opencv'
+_MODEL_NAME = "ArcFace"
+_BACKEND = "retinaface"  # Best face detector; fallback: 'opencv'
 
 
 def get_embedding(image: np.ndarray) -> Optional[np.ndarray]:
@@ -55,7 +58,7 @@ def get_embedding(image: np.ndarray) -> Optional[np.ndarray]:
             enforce_detection=True,
             align=True,
         )
-        embedding = np.array(result[0]['embedding'], dtype=np.float32)
+        embedding = np.array(result[0]["embedding"], dtype=np.float32)
         # Normalize to unit vector (ArcFace outputs are already normalized,
         # but explicit normalization ensures consistent cosine similarity)
         norm = np.linalg.norm(embedding)
@@ -68,11 +71,11 @@ def get_embedding(image: np.ndarray) -> Optional[np.ndarray]:
             result = DeepFace.represent(
                 img_path=image,
                 model_name=_MODEL_NAME,
-                detector_backend='opencv',
+                detector_backend="opencv",
                 enforce_detection=False,
                 align=True,
             )
-            embedding = np.array(result[0]['embedding'], dtype=np.float32)
+            embedding = np.array(result[0]["embedding"], dtype=np.float32)
             norm = np.linalg.norm(embedding)
             return embedding / norm if norm > 0 else embedding
         except Exception:

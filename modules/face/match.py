@@ -12,15 +12,17 @@ Two inputs:
 The same ArcFace embedder is used for both to ensure the embedding spaces
 are compatible (comparing apples to apples).
 """
-import numpy as np
-import cv2
-from typing import Optional
-from .embedder import get_embedding, cosine_similarity, similarity_to_verdict
 
+from typing import Optional
+
+import cv2
+import numpy as np
+
+from .embedder import cosine_similarity, get_embedding, similarity_to_verdict
 
 # Approximate face regions for cropping (relative to card/page dimensions)
 # These are fallback regions if face detection fails on the full image
-_AADHAAR_FACE_REGION  = (0.03, 0.15, 0.30, 0.60)  # (x1%, y1%, x2%, y2%)
+_AADHAAR_FACE_REGION = (0.03, 0.15, 0.30, 0.60)  # (x1%, y1%, x2%, y2%)
 _PASSPORT_FACE_REGION = (0.05, 0.10, 0.35, 0.65)
 
 
@@ -48,30 +50,40 @@ def match_face_to_document(
     # Step 1: Get document face embedding
     if chip_face_bytes is not None:
         doc_face = _decode_chip_face(chip_face_bytes)
-        embedding_source = 'chip_dg2_authenticated'
+        embedding_source = "chip_dg2_authenticated"
     else:
         doc_face = _crop_face_region(doc_image, doc_type)
-        embedding_source = 'ocr_crop'
+        embedding_source = "ocr_crop"
 
     if doc_face is None:
         return {
-            "similarity": None, "verdict": "UNKNOWN", "score": 0.5,
+            "similarity": None,
+            "verdict": "UNKNOWN",
+            "score": 0.5,
             "doc_embedding_source": embedding_source,
             "error": "Could not extract face from document",
         }
 
-    doc_embedding  = get_embedding(doc_face)
+    doc_embedding = get_embedding(doc_face)
     live_embedding = get_embedding(live_image)
 
     if doc_embedding is None:
-        return {"similarity": None, "verdict": "UNKNOWN", "score": 0.5,
-                "doc_embedding_source": embedding_source,
-                "error": "Face not detected in document photo"}
+        return {
+            "similarity": None,
+            "verdict": "UNKNOWN",
+            "score": 0.5,
+            "doc_embedding_source": embedding_source,
+            "error": "Face not detected in document photo",
+        }
 
     if live_embedding is None:
-        return {"similarity": None, "verdict": "UNKNOWN", "score": 0.5,
-                "doc_embedding_source": embedding_source,
-                "error": "Face not detected in live capture"}
+        return {
+            "similarity": None,
+            "verdict": "UNKNOWN",
+            "score": 0.5,
+            "doc_embedding_source": embedding_source,
+            "error": "Face not detected in live capture",
+        }
 
     # Step 2: Compare
     sim = cosine_similarity(doc_embedding, live_embedding)
@@ -88,10 +100,11 @@ def match_face_to_document(
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _crop_face_region(image: np.ndarray, doc_type: str) -> Optional[np.ndarray]:
     """Crop the expected face region from document image."""
     h, w = image.shape[:2]
-    if doc_type.upper() == 'AADHAAR':
+    if doc_type.upper() == "AADHAAR":
         x1f, y1f, x2f, y2f = _AADHAAR_FACE_REGION
     else:
         x1f, y1f, x2f, y2f = _PASSPORT_FACE_REGION

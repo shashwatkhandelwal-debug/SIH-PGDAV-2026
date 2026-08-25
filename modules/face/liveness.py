@@ -19,10 +19,11 @@ Eye Aspect Ratio (EAR):
   EAR drops below ~0.2 during a blink and rises back. A real blink lasts
   150-400ms. A static photo has a constant EAR (no blink).
 """
-import numpy as np
-import cv2
+
 from typing import Optional
 
+import cv2
+import numpy as np
 
 # EAR threshold  -  below this = eye closed (blink detected)
 _EAR_BLINK_THRESHOLD = 0.20
@@ -44,15 +45,22 @@ def passive_liveness_check(image: np.ndarray) -> dict:
     """
     try:
         import mediapipe as mp
+
         mp_face = mp.solutions.face_detection
 
-        with mp_face.FaceDetection(model_selection=0, min_detection_confidence=0.5) as detector:
+        with mp_face.FaceDetection(
+            model_selection=0, min_detection_confidence=0.5
+        ) as detector:
             rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             results = detector.process(rgb)
 
             if not results.detections:
-                return {"is_live": False, "confidence": 0.0,
-                        "method": "passive", "error": "No face detected"}
+                return {
+                    "is_live": False,
+                    "confidence": 0.0,
+                    "method": "passive",
+                    "error": "No face detected",
+                }
 
             # Texture-based heuristic: real faces have higher local binary
             # pattern (LBP) variance than printed photos
@@ -72,11 +80,19 @@ def passive_liveness_check(image: np.ndarray) -> dict:
             }
 
     except ImportError:
-        return {"is_live": None, "confidence": 0.5,
-                "method": "passive", "error": "mediapipe not installed"}
+        return {
+            "is_live": None,
+            "confidence": 0.5,
+            "method": "passive",
+            "error": "mediapipe not installed",
+        }
     except Exception as e:
-        return {"is_live": None, "confidence": 0.5,
-                "method": "passive", "error": str(e)}
+        return {
+            "is_live": None,
+            "confidence": 0.5,
+            "method": "passive",
+            "error": str(e),
+        }
 
 
 def compute_ear(eye_landmarks: list) -> float:
@@ -111,18 +127,24 @@ def detect_blink_in_frame(image: np.ndarray) -> dict:
     """
     try:
         import mediapipe as mp
+
         mp_mesh = mp.solutions.face_mesh
 
         # MediaPipe Face Mesh eye landmark indices (left eye)
         LEFT_EYE = [33, 160, 158, 133, 153, 144]
 
-        with mp_mesh.FaceMesh(static_image_mode=True, max_num_faces=1,
-                               min_detection_confidence=0.5) as mesh:
+        with mp_mesh.FaceMesh(
+            static_image_mode=True, max_num_faces=1, min_detection_confidence=0.5
+        ) as mesh:
             rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             results = mesh.process(rgb)
 
             if not results.multi_face_landmarks:
-                return {"blink_detected": False, "ear": None, "error": "No face detected"}
+                return {
+                    "blink_detected": False,
+                    "ear": None,
+                    "error": "No face detected",
+                }
 
             lm = results.multi_face_landmarks[0].landmark
             h, w = image.shape[:2]
@@ -143,6 +165,7 @@ def detect_blink_in_frame(image: np.ndarray) -> dict:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _lbp_variance(gray: np.ndarray) -> float:
     """
     Compute Local Binary Pattern variance as a texture measure.
@@ -150,11 +173,22 @@ def _lbp_variance(gray: np.ndarray) -> float:
     Lower variance indicates smoother texture (printed paper/screen).
     """
     h, w = gray.shape
-    center = gray[1:h-1, 1:w-1].astype(np.int32)
+    center = gray[1 : h - 1, 1 : w - 1].astype(np.int32)
 
     lbp = np.zeros_like(center, dtype=np.uint8)
-    for shift_r, shift_c in [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]:
-        neighbor = gray[1+shift_r:h-1+shift_r, 1+shift_c:w-1+shift_c].astype(np.int32)
+    for shift_r, shift_c in [
+        (-1, -1),
+        (-1, 0),
+        (-1, 1),
+        (0, -1),
+        (0, 1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
+    ]:
+        neighbor = gray[
+            1 + shift_r : h - 1 + shift_r, 1 + shift_c : w - 1 + shift_c
+        ].astype(np.int32)
         lbp = (lbp << 1) | (neighbor >= center).astype(np.uint8)
 
     return float(np.var(lbp))

@@ -17,32 +17,38 @@ Zero-image-storage principle:
   No face photos are retained. Embeddings cannot be reverse-engineered
   to reconstruct a face image.
 """
+
 import os
 import sqlite3
-import numpy as np
 from datetime import datetime
 from typing import Optional
 
+import numpy as np
+
 try:
     import faiss
+
     _FAISS_AVAILABLE = True
 except ImportError:
     _FAISS_AVAILABLE = False
 
-_DB_PATH    = os.path.join(os.path.dirname(__file__), '..', '..', 'identity_graph.db')
-_INDEX_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'identity_graph.faiss')
-_DIM        = 512
-_MATCH_THRESHOLD = 0.65   # Cosine similarity threshold for "same person"
+_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "identity_graph.db")
+_INDEX_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "identity_graph.faiss"
+)
+_DIM = 512
+_MATCH_THRESHOLD = 0.65  # Cosine similarity threshold for "same person"
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
+
 
 def search_and_store(
     embedding: np.ndarray,
     name: str,
     doc_number: str,
     doc_type: str,
-    checkpoint_id: str = 'default',
+    checkpoint_id: str = "default",
 ) -> dict:
     """
     Search the identity graph for the given embedding, then store it.
@@ -62,12 +68,16 @@ def search_and_store(
           stored_id (int)           -  row ID of newly stored record
     """
     if not _FAISS_AVAILABLE:
-        return {"matches": [], "identity_conflict": False,
-                "conflict_details": [], "stored_id": None,
-                "error": "faiss not installed"}
+        return {
+            "matches": [],
+            "identity_conflict": False,
+            "conflict_details": [],
+            "stored_id": None,
+            "error": "faiss not installed",
+        }
 
     index = _load_index()
-    db    = _get_db()
+    db = _get_db()
 
     matches = []
     conflicts = []
@@ -92,22 +102,26 @@ def search_and_store(
                     matches.append(match)
 
                     # Identity conflict: same face, different name or document number
-                    name_mismatch   = record['name'].upper() != name.upper()
-                    docnum_mismatch = record['doc_number'] != doc_number
+                    name_mismatch = record["name"].upper() != name.upper()
+                    docnum_mismatch = record["doc_number"] != doc_number
                     if name_mismatch or docnum_mismatch:
-                        conflicts.append({
-                            "previous_name":       record['name'],
-                            "current_name":        name,
-                            "previous_doc_number": record['doc_number'],
-                            "current_doc_number":  doc_number,
-                            "previous_timestamp":  record['timestamp'],
-                            "similarity":          round(similarity, 4),
-                            "name_mismatch":       name_mismatch,
-                            "doc_number_mismatch": docnum_mismatch,
-                        })
+                        conflicts.append(
+                            {
+                                "previous_name": record["name"],
+                                "current_name": name,
+                                "previous_doc_number": record["doc_number"],
+                                "current_doc_number": doc_number,
+                                "previous_timestamp": record["timestamp"],
+                                "similarity": round(similarity, 4),
+                                "name_mismatch": name_mismatch,
+                                "doc_number_mismatch": docnum_mismatch,
+                            }
+                        )
 
     # Store new record
-    stored_id = _store_record(db, index, embedding, name, doc_number, doc_type, checkpoint_id)
+    stored_id = _store_record(
+        db, index, embedding, name, doc_number, doc_type, checkpoint_id
+    )
     _save_index(index)
 
     db.close()
@@ -127,8 +141,8 @@ def get_stats() -> dict:
         return {"total_embeddings": 0, "error": "faiss not installed"}
     try:
         index = _load_index()
-        db    = _get_db()
-        cur   = db.execute("SELECT COUNT(*) FROM identity_records")
+        db = _get_db()
+        cur = db.execute("SELECT COUNT(*) FROM identity_records")
         count = cur.fetchone()[0]
         db.close()
         return {"total_embeddings": index.ntotal, "total_records": count}
@@ -137,6 +151,7 @@ def get_stats() -> dict:
 
 
 # ── Storage helpers ────────────────────────────────────────────────────────────
+
 
 def _load_index():
     """Load or create FAISS flat L2 index."""
@@ -166,14 +181,27 @@ def _get_db() -> sqlite3.Connection:
     return db
 
 
-def _store_record(db, index, embedding: np.ndarray,
-                  name: str, doc_number: str, doc_type: str,
-                  checkpoint_id: str) -> int:
+def _store_record(
+    db,
+    index,
+    embedding: np.ndarray,
+    name: str,
+    doc_number: str,
+    doc_type: str,
+    checkpoint_id: str,
+) -> int:
     faiss_idx = index.ntotal
     index.add(embedding.reshape(1, -1).astype(np.float32))
     cur = db.execute(
         "INSERT INTO identity_records (name, doc_number, doc_type, checkpoint, timestamp, faiss_index) VALUES (?,?,?,?,?,?)",
-        (name, doc_number, doc_type, checkpoint_id, datetime.utcnow().isoformat(), faiss_idx)
+        (
+            name,
+            doc_number,
+            doc_type,
+            checkpoint_id,
+            datetime.utcnow().isoformat(),
+            faiss_idx,
+        ),
     )
     db.commit()
     return cur.lastrowid

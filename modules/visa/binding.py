@@ -12,12 +12,12 @@ Attack this defends against:
 
 This is the direct defense against "tampered visa stamps" named in the PS.
 """
+
 import re
 from typing import Optional
 
-
 # Characters commonly confused by OCR on visa stamps
-_OCR_SUBSTITUTIONS = {'O': '0', '0': 'O', 'I': '1', '1': 'I', 'l': '1'}
+_OCR_SUBSTITUTIONS = {"O": "0", "0": "O", "I": "1", "1": "I", "l": "1"}
 
 
 def check_visa_passport_binding(visa_fields: dict, mrz_fields: dict) -> dict:
@@ -37,8 +37,8 @@ def check_visa_passport_binding(visa_fields: dict, mrz_fields: dict) -> dict:
           score (float)
           error (str|None)
     """
-    visa_pn = visa_fields.get('passport_number')
-    mrz_pn  = mrz_fields.get('passport_number')
+    visa_pn = visa_fields.get("passport_number")
+    mrz_pn = mrz_fields.get("passport_number")
 
     if not visa_pn:
         return {
@@ -56,7 +56,7 @@ def check_visa_passport_binding(visa_fields: dict, mrz_fields: dict) -> dict:
 
     # Exact match first
     visa_norm = _normalize_passport_number(visa_pn)
-    mrz_norm  = _normalize_passport_number(mrz_pn)
+    mrz_norm = _normalize_passport_number(mrz_pn)
 
     exact_match = visa_norm == mrz_norm
 
@@ -68,21 +68,26 @@ def check_visa_passport_binding(visa_fields: dict, mrz_fields: dict) -> dict:
     return {
         "bound": bound,
         "visa_passport_number": visa_pn,
-        "mrz_passport_number":  mrz_pn,
+        "mrz_passport_number": mrz_pn,
         "normalized_visa": visa_norm,
-        "normalized_mrz":  mrz_norm,
+        "normalized_mrz": mrz_norm,
         "exact_match": exact_match,
         "tolerant_match": tolerant_match,
         "score": 1.0 if bound else 0.0,
-        "error": None if bound else "Passport number on visa does not match presented passport MRZ",
+        "error": (
+            None
+            if bound
+            else "Passport number on visa does not match presented passport MRZ"
+        ),
     }
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _normalize_passport_number(pn: str) -> str:
     """Uppercase, strip spaces/dashes/fillers."""
-    return re.sub(r'[\s\-<]', '', pn.upper())
+    return re.sub(r"[\s\-<]", "", pn.upper())
 
 
 def _tolerant_compare(a: str, b: str) -> bool:

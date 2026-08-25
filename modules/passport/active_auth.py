@@ -22,14 +22,16 @@ Protocol:
 References:
   - ICAO 9303 Part 11, Section 6 (Active Authentication)
 """
+
 import os
 from typing import Optional
 
 try:
-    from cryptography.hazmat.primitives.asymmetric import padding
-    from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
     from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+
     _CRYPTO_AVAILABLE = True
 except ImportError:
     _CRYPTO_AVAILABLE = False
@@ -51,7 +53,11 @@ def perform_active_auth(chip_dg15: bytes, clf=None) -> dict:
           error (str|None)
     """
     if not _CRYPTO_AVAILABLE:
-        return {"valid": False, "error": "cryptography not installed", "challenge": None}
+        return {
+            "valid": False,
+            "error": "cryptography not installed",
+            "challenge": None,
+        }
 
     if clf is None:
         return {
@@ -64,7 +70,11 @@ def perform_active_auth(chip_dg15: bytes, clf=None) -> dict:
         # Step 1: Parse public key from DG15
         public_key = _parse_dg15_public_key(chip_dg15)
         if public_key is None:
-            return {"valid": False, "error": "Could not parse DG15 public key", "challenge": None}
+            return {
+                "valid": False,
+                "error": "Could not parse DG15 public key",
+                "challenge": None,
+            }
 
         # Step 2: Generate 8-byte random challenge
         challenge = os.urandom(8)
@@ -97,13 +107,15 @@ def perform_active_auth(chip_dg15: bytes, clf=None) -> dict:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _parse_dg15_public_key(dg15_bytes: bytes) -> Optional['RSAPublicKey']:
+
+def _parse_dg15_public_key(dg15_bytes: bytes) -> Optional["RSAPublicKey"]:
     """
     Parse RSA public key from DG15 raw bytes.
     DG15 encodes a SubjectPublicKeyInfo ASN.1 structure.
     """
     try:
         from cryptography.hazmat.primitives.serialization import load_der_public_key
+
         # DG15 starts with a tag (0x6F or similar), need to find SubjectPublicKeyInfo
         # The actual SPKi starts after the DG tag/length bytes
         # Try parsing directly first

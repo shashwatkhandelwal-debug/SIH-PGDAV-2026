@@ -7,21 +7,30 @@ such as Photoshop, GIMP, Lightroom, etc.
 Note: A sophisticated forger can strip EXIF with exiftool. Missing EXIF
 is NOT a positive signal  -  we only flag *presence* of editing-tool tags.
 """
-from PIL import Image
-import piexif
+
 from typing import Optional
 
+import piexif
+from PIL import Image
 
 EDITING_TOOL_KEYWORDS = [
-    'photoshop', 'gimp', 'lightroom', 'affinity', 'paint.net',
-    'snapseed', 'pixelmator', 'canva', 'fotor', 'adobe',
+    "photoshop",
+    "gimp",
+    "lightroom",
+    "affinity",
+    "paint.net",
+    "snapseed",
+    "pixelmator",
+    "canva",
+    "fotor",
+    "adobe",
 ]
 
 # EXIF tag IDs of interest
-TAG_SOFTWARE  = 0x0131  # Software used to process/create the image
-TAG_MAKE      = 0x010F  # Camera make
-TAG_MODEL     = 0x0110  # Camera model
-TAG_DATETIME  = 0x0132  # Date/time of last modification
+TAG_SOFTWARE = 0x0131  # Software used to process/create the image
+TAG_MAKE = 0x010F  # Camera make
+TAG_MODEL = 0x0110  # Camera model
+TAG_DATETIME = 0x0132  # Date/time of last modification
 
 
 def inspect_exif(image_path: str) -> dict:
@@ -40,17 +49,22 @@ def inspect_exif(image_path: str) -> dict:
     """
     try:
         img = Image.open(image_path)
-        exif_bytes = img.info.get('exif')
+        exif_bytes = img.info.get("exif")
         if not exif_bytes:
-            return {"suspicious": False, "software": None, "flags": [],
-                    "raw_tags": {}, "note": "No EXIF data present"}
+            return {
+                "suspicious": False,
+                "software": None,
+                "flags": [],
+                "raw_tags": {},
+                "note": "No EXIF data present",
+            }
 
         exif_dict = piexif.load(exif_bytes)
-        ifd0 = exif_dict.get('0th', {})
+        ifd0 = exif_dict.get("0th", {})
 
         software = _decode_tag(ifd0.get(TAG_SOFTWARE))
-        make     = _decode_tag(ifd0.get(TAG_MAKE))
-        model    = _decode_tag(ifd0.get(TAG_MODEL))
+        make = _decode_tag(ifd0.get(TAG_MAKE))
+        model = _decode_tag(ifd0.get(TAG_MODEL))
 
         flags = []
         if software and _is_editing_tool(software):
@@ -58,7 +72,9 @@ def inspect_exif(image_path: str) -> dict:
 
         # If software tag overrides make/model (image saved by software, not camera)
         if software and not make and not model:
-            flags.append("Software tag present but no camera Make/Model  -  image processed by software")
+            flags.append(
+                "Software tag present but no camera Make/Model  -  image processed by software"
+            )
 
         raw_tags = {
             "Software": software,
@@ -74,8 +90,13 @@ def inspect_exif(image_path: str) -> dict:
         }
 
     except Exception as e:
-        return {"suspicious": False, "software": None, "flags": [],
-                "raw_tags": {}, "error": str(e)}
+        return {
+            "suspicious": False,
+            "software": None,
+            "flags": [],
+            "raw_tags": {},
+            "error": str(e),
+        }
 
 
 def _decode_tag(value) -> Optional[str]:
@@ -83,7 +104,7 @@ def _decode_tag(value) -> Optional[str]:
     if value is None:
         return None
     if isinstance(value, bytes):
-        return value.decode('utf-8', errors='replace').strip('\x00')
+        return value.decode("utf-8", errors="replace").strip("\x00")
     return str(value).strip()
 
 

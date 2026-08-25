@@ -15,10 +15,12 @@ Three modes:
   2. region         - ELA restricted to a supplied bounding box (photo/QR/stamp)
   3. heatmap        - returns amplified RGB difference array for visualization
 """
+
 import io
+from typing import Optional
+
 import numpy as np
 from PIL import Image
-from typing import Optional
 
 
 def run_ela(
@@ -51,15 +53,15 @@ def run_ela(
 
     # Recompress at fixed quality
     buffer = io.BytesIO()
-    pil_img.save(buffer, format='JPEG', quality=quality)
+    pil_img.save(buffer, format="JPEG", quality=quality)
     buffer.seek(0)
-    recompressed = Image.open(buffer).convert('RGB')
+    recompressed = Image.open(buffer).convert("RGB")
 
     orig_arr = np.array(pil_img, dtype=np.float32)
     recomp_arr = np.array(recompressed, dtype=np.float32)
 
     diff = np.abs(orig_arr - recomp_arr)
-    
+
     # Statistical variance computation
     mean_var = float(np.var(diff))
     max_var = float(diff.max())
@@ -92,17 +94,17 @@ def _adaptive_threshold(image: np.ndarray, recomp_quality: int) -> float:
     # Encode to JPEG, read back quality from quantization tables
     pil = Image.fromarray(image[..., ::-1])
     buf = io.BytesIO()
-    pil.save(buf, format='JPEG', quality=95)  # Save at near-lossless
+    pil.save(buf, format="JPEG", quality=95)  # Save at near-lossless
     buf.seek(0)
     img_back = Image.open(buf)
 
     # Luma channel variance
-    luma = np.array(img_back.convert('L'), dtype=np.float32)
+    luma = np.array(img_back.convert("L"), dtype=np.float32)
     luma_var = float(np.var(luma))
 
     # Scale threshold inversely with estimated quality
     if luma_var > 3000:
-        return 8.0   # High-quality scan
+        return 8.0  # High-quality scan
     elif luma_var > 1000:
         return 12.0  # Medium quality
     else:

@@ -9,12 +9,13 @@ For the hackathon, seeded with simulated demo data.
 
 No network call required  -  works offline at a checkpoint.
 """
+
 import os
 import sqlite3
 from datetime import datetime
 from typing import Optional
 
-_DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'watchlist.db')
+_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "watchlist.db")
 
 
 def check_watchlist(doc_number: str, doc_type: str) -> dict:
@@ -31,7 +32,7 @@ def check_watchlist(doc_number: str, doc_type: str) -> dict:
     db = _get_db()
     cur = db.execute(
         "SELECT reason, added_date, severity FROM watchlist WHERE doc_number=? AND doc_type=?",
-        (doc_number.strip().upper(), doc_type.strip().upper())
+        (doc_number.strip().upper(), doc_type.strip().upper()),
     )
     row = cur.fetchone()
     db.close()
@@ -39,20 +40,28 @@ def check_watchlist(doc_number: str, doc_type: str) -> dict:
     if row:
         return {
             "flagged": True,
-            "reason":     row[0],
+            "reason": row[0],
             "added_date": row[1],
-            "severity":   row[2],
+            "severity": row[2],
         }
     return {"flagged": False, "reason": None, "added_date": None, "severity": None}
 
 
-def add_to_watchlist(doc_number: str, doc_type: str, reason: str, severity: str = 'HIGH') -> bool:
+def add_to_watchlist(
+    doc_number: str, doc_type: str, reason: str, severity: str = "HIGH"
+) -> bool:
     """Add a document to the watchlist."""
     db = _get_db()
     try:
         db.execute(
             "INSERT OR REPLACE INTO watchlist (doc_number, doc_type, reason, severity, added_date) VALUES (?,?,?,?,?)",
-            (doc_number.strip().upper(), doc_type.strip().upper(), reason, severity, datetime.utcnow().isoformat())
+            (
+                doc_number.strip().upper(),
+                doc_type.strip().upper(),
+                reason,
+                severity,
+                datetime.utcnow().isoformat(),
+            ),
         )
         db.commit()
         return True
@@ -65,16 +74,16 @@ def add_to_watchlist(doc_number: str, doc_type: str, reason: str, severity: str 
 def seed_demo_data():
     """Seed watchlist with demo/simulated flagged documents for demonstration."""
     demo_entries = [
-        ('X9999999', 'PASSPORT', 'Reported stolen - Interpol red notice', 'HIGH'),
-        ('123456789012', 'AADHAAR', 'Associated with identity fraud case', 'HIGH'),
-        ('TV1234567', 'VISA', 'Visa revoked - overstay record', 'MEDIUM'),
-        ('A0000001', 'PASSPORT', 'Demo flagged passport for testing', 'LOW'),
+        ("X9999999", "PASSPORT", "Reported stolen - Interpol red notice", "HIGH"),
+        ("123456789012", "AADHAAR", "Associated with identity fraud case", "HIGH"),
+        ("TV1234567", "VISA", "Visa revoked - overstay record", "MEDIUM"),
+        ("A0000001", "PASSPORT", "Demo flagged passport for testing", "LOW"),
     ]
     db = _get_db()
     for doc_number, doc_type, reason, severity in demo_entries:
         db.execute(
             "INSERT OR IGNORE INTO watchlist (doc_number, doc_type, reason, severity, added_date) VALUES (?,?,?,?,?)",
-            (doc_number, doc_type, reason, severity, '2026-01-01T00:00:00')
+            (doc_number, doc_type, reason, severity, "2026-01-01T00:00:00"),
         )
     db.commit()
     db.close()
