@@ -72,16 +72,66 @@ def compute_score(check_results: dict[str, Any], doc_type: Optional[str] = None)
             "cross_field_contribution": round(term_cross_field, 2),
             "ela_contribution": round(term_ela, 2)
         }
+    elif doc_type == "PASSPORT":
+        # 1. Checksum Failure
+        checksum_fail = 0.0
+        if "passport_mrz_checksums" in check_results:
+            res = check_results["passport_mrz_checksums"]
+            if res is not None and res.get("score") == 0.0:
+                checksum_fail = 1.0
+
+        # 2. Cross-field Inconsistency
+        cross_field_inconsistent = 0.0
+        if "passport_mrz_viz_consistency" in check_results:
+            res = check_results["passport_mrz_viz_consistency"]
+            if res is not None and res.get("score") == 0.0:
+                cross_field_inconsistent = 1.0
+
+        # 3. Authenticity Failure (based on verification_tier)
+        verification_tier = check_results.get("verification_tier", "CHIP_UNAVAILABLE")
+        authenticity_fail = 0.0
+        
+        if verification_tier == "CHIP_VERIFIED":
+            pa = check_results.get("passport_passive_auth")
+            aa = check_results.get("passport_active_auth")
+            pa_score = pa.get("score") if isinstance(pa, dict) else None
+            aa_score = aa.get("score") if isinstance(aa, dict) else None
+            if pa_score == 0.0 or aa_score == 0.0:
+                authenticity_fail = 1.0
+        elif verification_tier == "CHIP_READ_FAILED":
+            authenticity_fail = 1.0
+
+        term_checksum = 30.0 * checksum_fail
+        term_cross_field = 20.0 * cross_field_inconsistent
+        term_authenticity = 30.0 * authenticity_fail
+
+        if verification_tier == "CHIP_UNAVAILABLE":
+            # Rescale the remaining three terms (checksum, cross-field, ELA) proportionally to still cap at 100.
+            # Max possible pre-rescale sum is 30 (checksum) + 20 (cross-field) + 20 (ELA) = 70.
+            raw_score = term_checksum + term_cross_field + term_ela
+            overall_score = min(100.0, max(0.0, raw_score * (100.0 / 70.0)))
+            
+            component_breakdown = {
+                "checksum_contribution": round(term_checksum * (100.0 / 70.0), 2),
+                "cross_field_contribution": round(term_cross_field * (100.0 / 70.0), 2),
+                "ela_contribution": round(term_ela * (100.0 / 70.0), 2)
+            }
+        else:
+            raw_score = term_checksum + term_cross_field + term_authenticity + term_ela
+            overall_score = min(100.0, max(0.0, raw_score))
+            
+            component_breakdown = {
+                "checksum_contribution": round(term_checksum, 2),
+                "chip_authenticity_contribution": round(term_authenticity, 2),
+                "cross_field_contribution": round(term_cross_field, 2),
+                "ela_contribution": round(term_ela, 2)
+            }
     else:
-        # AADHAAR / PASSPORT
+        # AADHAAR
         # 1. Checksum Failure
         checksum_fail = 0.0
         if "aadhaar_verhoeff" in check_results:
             res = check_results["aadhaar_verhoeff"]
-            if res is not None and res.get("score") == 0.0:
-                checksum_fail = 1.0
-        elif "passport_mrz_checksums" in check_results:
-            res = check_results["passport_mrz_checksums"]
             if res is not None and res.get("score") == 0.0:
                 checksum_fail = 1.0
 
@@ -91,22 +141,13 @@ def compute_score(check_results: dict[str, Any], doc_type: Optional[str] = None)
             res = check_results["aadhaar_uidai_signature"]
             if res is not None and res.get("score") == 0.0:
                 signature_fail = 1.0
-        elif "passport_passive_auth" in check_results or "passport_active_auth" in check_results:
-            pa = check_results.get("passport_passive_auth")
-            aa = check_results.get("passport_active_auth")
-            pa_score = pa.get("score") if isinstance(pa, dict) else None
-            aa_score = aa.get("score") if isinstance(aa, dict) else None
-            if pa_score == 0.0 or aa_score == 0.0:
-                signature_fail = 1.0
 
         # 3. Cross-field Inconsistency
         cross_field_inconsistent = 0.0
-        for key in ["aadhaar_qr_ocr_consistency", "passport_mrz_viz_consistency"]:
-            if key in check_results:
-                res = check_results[key]
-                if res is not None and res.get("score") == 0.0:
-                    cross_field_inconsistent = 1.0
-                    break
+        if "aadhaar_qr_ocr_consistency" in check_results:
+            res = check_results["aadhaar_qr_ocr_consistency"]
+            if res is not None and res.get("score") == 0.0:
+                cross_field_inconsistent = 1.0
 
         term_checksum = 30.0 * checksum_fail
         term_signature = 30.0 * signature_fail

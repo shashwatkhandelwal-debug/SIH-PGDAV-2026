@@ -40,13 +40,24 @@ aadhaar_lines = [
     "Address: 7/168 B Swaroop nagar Kanpur"
 ]
 
-passport_lines = [
+passport_lines_old = [
     "PASSPORT",
     "Surname: KHANDELWAL",
     "Given Names: SHASHWAT",
     "Date of Birth: 12/05/1990",
     "Date of Issue: 10/10/2020",
-    "Date of Expiry: 09/10/2030",
+    "Date of Expiry: 09/10/2030",  # Issued before May 2025, no chip expected
+    "Place of Birth: KANPUR",
+    "Nationality: INDIAN"
+]
+
+passport_lines_new = [
+    "PASSPORT",
+    "Surname: KHANDELWAL",
+    "Given Names: SHASHWAT",
+    "Date of Birth: 12/05/1990",
+    "Date of Issue: 10/10/2026",
+    "Date of Expiry: 09/10/2036",  # Issued after May 2025, chip expected
     "Place of Birth: KANPUR",
     "Nationality: INDIAN"
 ]
@@ -66,8 +77,6 @@ visa_lines = [
 
 async def test_aadhaar_genuine():
     img = create_mock_document(aadhaar_lines)
-    
-    # Run ACTUAL OCR to compute a real confidence score from the sharp image
     real_ocr = extract_aadhaar_fields(img)
     
     ocr_mock = {
@@ -108,11 +117,8 @@ async def test_aadhaar_genuine():
 
 
 async def test_aadhaar_tampered():
-    # Generate a degraded (blurred) Aadhaar card
     img_sharp = create_mock_document(aadhaar_lines)
     img_degraded = cv2.GaussianBlur(img_sharp, (15, 15), 0)
-    
-    # Run ACTUAL OCR on degraded image to get a lower confidence score
     real_ocr = extract_aadhaar_fields(img_degraded)
     
     ocr_mock = {
@@ -152,10 +158,9 @@ async def test_aadhaar_tampered():
          print(json.dumps(resp, indent=2))
 
 
-async def test_passport_genuine():
-    img = create_mock_document(passport_lines)
-    
-    # Run ACTUAL OCR to compute a real confidence score from the sharp image
+async def test_passport_genuine_chip_verified():
+    """Case (a): Genuine passport with full chip verification succeeding"""
+    img = create_mock_document(passport_lines_new)
     real_viz = extract_viz_fields(img)
     
     mrz_mock = {
@@ -166,7 +171,7 @@ async def test_passport_genuine():
         "nationality": "IND",
         "dob": "12/05/1990",
         "sex": "M",
-        "expiry": "01/01/2035",
+        "expiry": "09/10/2036",
         "check_digits": {
             "passport_number": True,
             "dob": True,
@@ -180,8 +185,63 @@ async def test_passport_genuine():
         "surname": "KHANDELWAL",
         "given_names": "SHASHWAT",
         "dob": "12/05/1990",
+        "doi": "10/10/2026",
+        "doe": "09/10/2036",
+        "confidence": real_viz["confidence"]
+    }
+    
+    # Mock Passive Authentication returning success
+    with patch("api.orchestrator._extract_mrz_from_image", return_value=mrz_mock), \
+         patch("modules.passport.viz.extract_viz_fields", return_value=viz_mock), \
+         patch("modules.passport.consistency.check_mrz_viz_consistency", return_value={"consistent": True, "mismatches": []}), \
+         patch("modules.passport.passive_auth.perform_passive_auth", return_value={"valid": True, "chain_valid": True}), \
+         patch("modules.passport.active_auth.perform_active_auth", return_value={"valid": True}), \
+         patch("modules.forensics.ela.run_ela", return_value={"mean_variance": 1.4, "heatmap": np.zeros((10,10,3)), "suspicious": False}):
+         
+         results, notes = await _run_passport_checks(
+             img,
+             nfc_available=True,
+             sod_bytes=b"dummy_sod",
+             dg1_bytes=b"dummy_dg1",
+             dg2_bytes=b"dummy_dg2",
+             dg15_bytes=b"dummy_dg15"
+         )
+         resp = await _finalize(results, "PASSPORT", "L8406789", "KHANDELWAL SHASHWAT", {}, notes)
+         print("\n========================================")
+         print("CASE (A) - GENUINE PASSPORT CHIP_VERIFIED RESPONSE:")
+         print("========================================")
+         print(json.dumps(resp, indent=2))
+
+
+async def test_passport_genuine_chip_unavailable():
+    """Case (b): Genuine passport with verification_tier CHIP_UNAVAILABLE (no chip)"""
+    img = create_mock_document(passport_lines_old)
+    real_viz = extract_viz_fields(img)
+    
+    mrz_mock = {
+        "valid": True,
+        "passport_number": "L8406789",
+        "surname": "KHANDELWAL",
+        "given_names": "SHASHWAT",
         "nationality": "IND",
-        "doe": "01/01/2035",
+        "dob": "12/05/1990",
+        "sex": "M",
+        "expiry": "09/10/2030",  # Expire 2030 -> issued 2020 -> CHIP_UNAVAILABLE
+        "check_digits": {
+            "passport_number": True,
+            "dob": True,
+            "expiry": True,
+            "personal_number": True,
+            "overall": True
+        }
+    }
+    viz_mock = {
+        "passport_number": "L8406789",
+        "surname": "KHANDELWAL",
+        "given_names": "SHASHWAT",
+        "dob": "12/05/1990",
+        "doi": "10/10/2020",
+        "doe": "09/10/2030",
         "confidence": real_viz["confidence"]
     }
     
@@ -193,17 +253,15 @@ async def test_passport_genuine():
          results, notes = await _run_passport_checks(img, nfc_available=False)
          resp = await _finalize(results, "PASSPORT", "L8406789", "KHANDELWAL SHASHWAT", {}, notes)
          print("\n========================================")
-         print("GENUINE PASSPORT JSON RESPONSE:")
+         print("CASE (B) - GENUINE PASSPORT CHIP_UNAVAILABLE RESPONSE:")
          print("========================================")
          print(json.dumps(resp, indent=2))
 
 
-async def test_passport_tampered():
-    # Generate a degraded (blurred) passport biographical page
-    img_sharp = create_mock_document(passport_lines)
+async def test_passport_tampered_chip_unavailable():
+    """Case (c): Tampered passport in the CHIP_UNAVAILABLE tier (bad checksum, bad ELA)"""
+    img_sharp = create_mock_document(passport_lines_old)
     img_degraded = cv2.GaussianBlur(img_sharp, (15, 15), 0)
-    
-    # Run ACTUAL OCR to compute a degraded confidence score
     real_viz = extract_viz_fields(img_degraded)
     
     mrz_mock = {
@@ -214,9 +272,9 @@ async def test_passport_tampered():
         "nationality": "IND",
         "dob": "12/05/1990",
         "sex": "M",
-        "expiry": "01/01/2035",
+        "expiry": "09/10/2030",
         "check_digits": {
-            "passport_number": False,
+            "passport_number": False,  # failed check digit
             "dob": True,
             "expiry": True,
             "personal_number": True,
@@ -228,47 +286,67 @@ async def test_passport_tampered():
         "surname": "FAKE_NAME",
         "given_names": "SHASHWAT",
         "dob": "12/05/1990",
-        "nationality": "IND",
-        "doe": "01/01/2035",
+        "doi": "10/10/2020",
+        "doe": "09/10/2030",
         "confidence": real_viz["confidence"]
     }
     
     with patch("api.orchestrator._extract_mrz_from_image", return_value=mrz_mock), \
          patch("modules.passport.viz.extract_viz_fields", return_value=viz_mock), \
          patch("modules.passport.consistency.check_mrz_viz_consistency", return_value={"consistent": False, "mismatches": ["surname"]}), \
-         patch("modules.forensics.ela.run_ela", return_value={"mean_variance": 28.5, "heatmap": np.zeros((10,10,3)), "suspicious": True}):
+         patch("modules.forensics.ela.run_ela", return_value={"mean_variance": 22.5, "heatmap": np.zeros((10,10,3)), "suspicious": True}):
          
          results, notes = await _run_passport_checks(img_degraded, nfc_available=False)
          resp = await _finalize(results, "PASSPORT", "L8406789", "KHANDELWAL SHASHWAT", {}, notes)
          print("\n========================================")
-         print("TAMPERED PASSPORT JSON RESPONSE:")
+         print("CASE (C) - TAMPERED PASSPORT CHIP_UNAVAILABLE RESPONSE:")
          print("========================================")
          print(json.dumps(resp, indent=2))
 
 
-async def test_passport_nfc_active():
-    """Verify that perform_passive_auth is actually called in the NFC path."""
-    img = create_mock_document(passport_lines)
-    mrz_mock = {"valid": True, "passport_number": "L8406789"}
-    viz_mock = {"passport_number": "L8406789", "confidence": 0.9}
+async def test_passport_expected_chip_read_failed():
+    """Case (d): Genuine passport where chip is expected based on date but could not be read"""
+    img = create_mock_document(passport_lines_new)
+    real_viz = extract_viz_fields(img)
+    
+    mrz_mock = {
+        "valid": True,
+        "passport_number": "L8406789",
+        "surname": "KHANDELWAL",
+        "given_names": "SHASHWAT",
+        "nationality": "IND",
+        "dob": "12/05/1990",
+        "sex": "M",
+        "expiry": "09/10/2036",  # Expire 2036 -> issued 2026 -> CHIP_READ_FAILED if no NFC
+        "check_digits": {
+            "passport_number": True,
+            "dob": True,
+            "expiry": True,
+            "personal_number": True,
+            "overall": True
+        }
+    }
+    viz_mock = {
+        "passport_number": "L8406789",
+        "surname": "KHANDELWAL",
+        "given_names": "SHASHWAT",
+        "dob": "12/05/1990",
+        "doi": "10/10/2026",
+        "doe": "09/10/2036",
+        "confidence": real_viz["confidence"]
+    }
     
     with patch("api.orchestrator._extract_mrz_from_image", return_value=mrz_mock), \
          patch("modules.passport.viz.extract_viz_fields", return_value=viz_mock), \
          patch("modules.passport.consistency.check_mrz_viz_consistency", return_value={"consistent": True, "mismatches": []}), \
          patch("modules.forensics.ela.run_ela", return_value={"mean_variance": 1.4, "heatmap": np.zeros((10,10,3)), "suspicious": False}):
          
-         # Call with nfc_available=True and mock payloads to trigger perform_passive_auth
-         results, notes = await _run_passport_checks(
-             img,
-             nfc_available=True,
-             sod_bytes=b"dummy_sod_bytes_to_trigger",
-             dg1_bytes=b"dummy_dg1_bytes_to_trigger",
-             dg2_bytes=b"dummy_dg2_bytes_to_trigger"
-         )
+         results, notes = await _run_passport_checks(img, nfc_available=False)
          resp = await _finalize(results, "PASSPORT", "L8406789", "KHANDELWAL SHASHWAT", {}, notes)
          print("\n========================================")
-         print("PASSPORT ACTIVE NFC PATH COMPLETED:")
+         print("CASE (D) - PASSPORT CHIP_READ_FAILED RESPONSE:")
          print("========================================")
+         print(json.dumps(resp, indent=2))
 
 
 async def test_visa_genuine():
@@ -358,9 +436,10 @@ async def test_visa_duration_rule_only_fail():
 async def main():
     await test_aadhaar_genuine()
     await test_aadhaar_tampered()
-    await test_passport_genuine()
-    await test_passport_tampered()
-    await test_passport_nfc_active()
+    await test_passport_genuine_chip_verified()
+    await test_passport_genuine_chip_unavailable()
+    await test_passport_tampered_chip_unavailable()
+    await test_passport_expected_chip_read_failed()
     await test_visa_genuine()
     await test_visa_tampered()
     await test_visa_duration_rule_only_fail()

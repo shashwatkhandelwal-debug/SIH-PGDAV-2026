@@ -1,5 +1,5 @@
 """
-MRZ ↔ VIZ Consistency Check.
+MRZ <-> VIZ Consistency Check.
 
 Cross-checks fields extracted from the MRZ (machine-readable zone)
 against OCR'd VIZ (visual inspection zone) fields.
@@ -9,6 +9,11 @@ it over a genuine biographical page  -  the printed VIZ fields won't match.
 
 Also catches: altering the printed DOB/expiry while leaving the MRZ intact,
 since the MRZ check digits would still be valid but the fields now disagree.
+
+LIMITATION: Live cross-referencing against a central government passport database
+or INTERPOL's SLTD (Stolen and Lost Travel Documents) database is NOT implemented.
+This requires institutional access (diplomatic/immigration API integration) that is
+outside the current scope. This module is an architected extension point for such lookups.
 """
 from Levenshtein import distance as levenshtein_distance
 from typing import Optional

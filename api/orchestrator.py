@@ -24,6 +24,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime, date
 
 app = FastAPI(
     title="SSB Document Screening API",
@@ -223,6 +224,30 @@ async def _run_aadhaar_checks(image: np.ndarray) -> tuple[dict, list]:
     return results, notes
 
 
+def _parse_passport_date(date_str: Optional[str]) -> Optional[date]:
+    if not date_str:
+        return None
+    date_str = date_str.strip()
+    from datetime import datetime, date
+    # Try common formats DD/MM/YYYY or DD-MM-YYYY or YYYY-MM-DD
+    for fmt in ['%d/%m/%Y', '%d-%m-%Y', '%Y-%m-%d']:
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    # Try YYMMDD (from MRZ)
+    if len(date_str) == 6 and date_str.isdigit():
+        try:
+            yy = int(date_str[:2])
+            mm = int(date_str[2:4])
+            dd = int(date_str[4:])
+            year = 2000 + yy if yy < 50 else 1900 + yy
+            return date(year, mm, dd)
+        except ValueError:
+            pass
+    return None
+
+
 async def _run_passport_checks(image: np.ndarray, nfc_available: bool,
                                sod_bytes: Optional[bytes] = None,
                                dg1_bytes: Optional[bytes] = None,
@@ -236,6 +261,7 @@ async def _run_passport_checks(image: np.ndarray, nfc_available: bool,
     from modules.forensics.ela import run_ela
     from shared.watchlist import check_watchlist
     from shared.quality_check import check_quality
+    from datetime import date
 
     quality = check_quality(image)
     if not quality['acceptable']:
@@ -243,6 +269,34 @@ async def _run_passport_checks(image: np.ndarray, nfc_available: bool,
 
     mrz_data = await _safe_run(_extract_mrz_from_image, image)
     viz_data = await _safe_run(extract_viz_fields, image)
+
+    # Determine verification tier
+    nfc_success = False
+    if nfc_available and sod_bytes and dg1_bytes and dg2_bytes:
+        nfc_success = True
+
+    should_have_chip = False
+    if viz_data:
+        doi = _parse_passport_date(viz_data.get('doi'))
+        if doi and doi >= date(2025, 5, 1):
+            should_have_chip = True
+    
+    expiry_str = (mrz_data or {}).get('expiry') or (viz_data or {}).get('doe')
+    if expiry_str:
+        doe = _parse_passport_date(expiry_str)
+        if doe and doe >= date(2035, 5, 1):
+            should_have_chip = True
+
+    if nfc_success:
+        verification_tier = "CHIP_VERIFIED"
+    elif nfc_available:
+        verification_tier = "CHIP_READ_FAILED"
+    elif should_have_chip:
+        verification_tier = "CHIP_READ_FAILED"
+    else:
+        verification_tier = "CHIP_UNAVAILABLE"
+
+    results['verification_tier'] = verification_tier
 
     if mrz_data and mrz_data.get('valid'):
         results['_mrz'] = mrz_data
@@ -263,22 +317,18 @@ async def _run_passport_checks(image: np.ndarray, nfc_available: bool,
         notes.append("Passport MRZ-VIZ consistency check skipped: MRZ invalid.")
 
     # NFC integration checks
-    if nfc_available:
-        if sod_bytes and dg1_bytes and dg2_bytes:
-            from modules.passport.passive_auth import perform_passive_auth
-            chip_data = {"sod": sod_bytes, "data_groups": {1: dg1_bytes, 2: dg2_bytes}}
-            pa_res = await _safe_run(perform_passive_auth, chip_data)
-            if pa_res:
-                results['passport_passive_auth'] = {
-                    'score': 1.0 if pa_res.get('valid') else 0.0,
-                    **pa_res
-                }
-            else:
-                results['passport_passive_auth'] = {'score': 0.0, 'error': 'Passive auth execution failed'}
-                notes.append("Passive authentication execution failed.")
+    if verification_tier == "CHIP_VERIFIED":
+        from modules.passport.passive_auth import perform_passive_auth
+        chip_data = {"sod": sod_bytes, "data_groups": {1: dg1_bytes, 2: dg2_bytes}}
+        pa_res = await _safe_run(perform_passive_auth, chip_data)
+        if pa_res:
+            results['passport_passive_auth'] = {
+                'score': 1.0 if pa_res.get('valid') else 0.0,
+                **pa_res
+            }
         else:
-            results['passport_passive_auth'] = None
-            notes.append("NFC data incomplete: SOD or DG1/DG2 missing.")
+            results['passport_passive_auth'] = {'score': 0.0, 'error': 'Passive auth execution failed'}
+            notes.append("Passive authentication execution failed.")
 
         if dg15_bytes:
             from modules.passport.active_auth import perform_active_auth
@@ -295,10 +345,12 @@ async def _run_passport_checks(image: np.ndarray, nfc_available: bool,
         else:
             results['passport_active_auth'] = None
             notes.append("NFC data incomplete: DG15 public key missing.")
+    elif verification_tier == "CHIP_READ_FAILED":
+        results['passport_passive_auth'] = {'score': 0.0, 'error': 'E-passport chip read failed'}
+        results['passport_active_auth'] = None
     else:
         results['passport_passive_auth'] = None
         results['passport_active_auth'] = None
-        notes.append("NFC verification skipped: hardware not available.")
 
     ela_full = await _safe_run(run_ela, image)
     if ela_full:
@@ -434,6 +486,21 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
         if isinstance(rules, dict) and not rules.get("valid", True):
             for v in rules.get("violations", []):
                 notes.append(f"Visa rule violation: {v}")
+
+    # Append passport-specific notes based on verification_tier
+    if doc_type == "PASSPORT":
+        verification_tier = check_results.get("verification_tier")
+        if verification_tier == "CHIP_VERIFIED":
+            pa = check_results.get("passport_passive_auth", {})
+            if isinstance(pa, dict) and pa.get("valid"):
+                notes.append("Chip verified: Passive and Active Authentication both passed.")
+            else:
+                err_reason = pa.get("error") if isinstance(pa, dict) else "Signature verification failed"
+                notes.append(f"Chip verified but authentication failed: {err_reason}.")
+        elif verification_tier == "CHIP_READ_FAILED":
+            notes.append("E-passport chip expected based on passport issue date but could not be read, treated as an authenticity concern pending manual verification")
+        elif verification_tier == "CHIP_UNAVAILABLE":
+            notes.append("No NFC chip detected, passport predates e-passport rollout or chip read unavailable, verification based on MRZ checksum and MRZ-VIZ consistency only")
 
     score_result = compute_score(score_input, doc_type)
     summary = generate_summary(score_input, score_result)
@@ -574,6 +641,8 @@ async def _finalize(check_results: dict, doc_type: str, doc_number: str, name: s
         "cross_field_consistent": cross_field_consistent,
         "cross_field_mismatches": cross_field_mismatches
     }
+    if doc_type == "PASSPORT":
+        validation["verification_tier"] = check_results.get("verification_tier")
 
     # Build Tampering Forensics block
     ela_full = score_input.get("ela_full_document", {})
