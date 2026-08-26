@@ -45,16 +45,33 @@ for key in [
 if "last_doc_type" not in st.session_state:
     st.session_state.last_doc_type = "AADHAAR"
 
-# Inject scanner styles with scanline animation
+# Inject scanner styles with scanline animation & focus reticle
 st.markdown(
     """
 <style>
 /* Document Scan Overlay styling */
 .doc-scan-container div[data-testid="stCameraInput"] {
-    border: 3px dashed #00FF00 !important;
-    border-radius: 12px;
+    border: 3px solid #00E676 !important;
+    border-radius: 16px;
     position: relative;
     overflow: hidden;
+    box-shadow: 0 0 20px rgba(0, 230, 118, 0.25);
+}
+.doc-scan-container div[data-testid="stCameraInput"]::before {
+    content: "🎯 ALIGN DOCUMENT INSIDE FRAME (TAP SCREEN TO FOCUS)";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.75);
+    color: #00E676;
+    font-size: 11px;
+    font-weight: bold;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+    z-index: 15;
+    pointer-events: none;
 }
 .doc-scan-container div[data-testid="stCameraInput"]::after {
     content: "";
@@ -62,18 +79,56 @@ st.markdown(
     top: 0;
     left: 0;
     width: 100%;
-    height: 4px;
-    background: linear-gradient(to bottom, rgba(0, 255, 0, 0), #00FF00);
-    animation: scanline 2.5s linear infinite;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #00E676, #FFFFFF, #00E676, transparent);
+    animation: scanline 2.0s ease-in-out infinite;
     z-index: 10;
     pointer-events: none;
+    box-shadow: 0 0 12px #00E676;
+}
+/* QR Scan Overlay styling (GPay style) */
+.qr-scan-container div[data-testid="stCameraInput"] {
+    border: 3px solid #FFD600 !important;
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0 25px rgba(255, 214, 0, 0.3);
+}
+.qr-scan-container div[data-testid="stCameraInput"]::before {
+    content: "⚡ GPAY STYLE SCANNER - ALIGN QR IN CENTER";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: #FFD600;
+    font-size: 11px;
+    font-weight: bold;
+    padding: 3px 10px;
+    border-radius: 20px;
+    z-index: 15;
+    pointer-events: none;
+}
+.qr-scan-container div[data-testid="stCameraInput"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #FFD600, #FFFFFF, #FFD600, transparent);
+    animation: scanline 1.8s ease-in-out infinite;
+    z-index: 10;
+    pointer-events: none;
+    box-shadow: 0 0 12px #FFD600;
 }
 /* Face Scan Overlay styling */
 .face-scan-container div[data-testid="stCameraInput"] {
-    border: 3px dashed #0088FF !important;
+    border: 3px solid #2979FF !important;
     border-radius: 50% !important;
     position: relative;
     overflow: hidden;
+    box-shadow: 0 0 25px rgba(41, 121, 255, 0.3);
 }
 .face-scan-container div[data-testid="stCameraInput"]::after {
     content: "";
@@ -82,15 +137,15 @@ st.markdown(
     left: 0;
     width: 100%;
     height: 4px;
-    background: linear-gradient(to bottom, rgba(0, 136, 255, 0), #0088FF);
-    animation: scanline 3.5s linear infinite;
+    background: linear-gradient(90deg, transparent, #2979FF, #FFFFFF, #2979FF, transparent);
+    animation: scanline 2.8s ease-in-out infinite;
     z-index: 10;
     pointer-events: none;
 }
 @keyframes scanline {
-    0% { top: 0%; }
-    50% { top: 100%; }
-    100% { top: 0%; }
+    0% { top: 5%; opacity: 0.8; }
+    50% { top: 95%; opacity: 1; }
+    100% { top: 5%; opacity: 0.8; }
 }
 </style>
 """,
@@ -104,56 +159,35 @@ st.divider()
 
 # ── Top-Level Navigation Tabs ──────────────────────────────────────────────────
 tab_screening, tab_qr_scanner = st.tabs(
-    ["🛂 Full Document Screening", "🔍 Instant QR & Signature Scanner"]
+    ["🛂 Full Document Screening", "⚡ Live GPay-Style QR Scanner"]
 )
 
-# ── Helper for Image Inputs with Live Focus/Sharpness Meter ───────────────────
+# ── Helper for Direct Camera Inputs with Live Focus/Sharpness Meter ────────────
 
 
 def _render_image_input(
     label: str, key_prefix: str, scan_type: str = "doc"
 ) -> Optional[np.ndarray]:
-    """Render image input with choice of Live Camera or High-Res Upload, plus focus meter."""
-    col_m1, col_m2 = st.columns([1, 1])
-    with col_m1:
-        mode = st.radio(
-            f"Input Mode for {label}:",
-            ["📷 Live Camera", "📁 High-Res Photo"],
-            key=f"{key_prefix}_mode",
-            horizontal=True,
-        )
-    with col_m2:
-        st.caption("💡 *Tip: Tap phone screen on text/QR to lock auto-focus before snapping.*")
+    """Direct live camera scanner with autofocus overlay and real-time focus validation."""
+    st.markdown(f'<div class="{scan_type}-scan-container">', unsafe_allow_html=True)
+    cam_file = st.camera_input(f"📷 {label}", key=f"{key_prefix}_cam")
+    st.markdown("</div>", unsafe_allow_html=True)
 
     img_arr = None
-    if mode == "📷 Live Camera":
-        st.markdown(f'<div class="{scan_type}-scan-container">', unsafe_allow_html=True)
-        cam_file = st.camera_input(f"📷 {label}", key=f"{key_prefix}_cam")
-        st.markdown("</div>", unsafe_allow_html=True)
-        if cam_file:
-            pil = Image.open(cam_file).convert("RGB")
-            img_arr = np.array(pil)[..., ::-1]
-    else:
-        upload_file = st.file_uploader(
-            f"📁 Upload {label} (Use phone camera photo with optical autofocus)",
-            type=["jpg", "jpeg", "png"],
-            key=f"{key_prefix}_upload",
-        )
-        if upload_file:
-            pil = Image.open(upload_file).convert("RGB")
-            img_arr = np.array(pil)[..., ::-1]
+    if cam_file:
+        pil = Image.open(cam_file).convert("RGB")
+        img_arr = np.array(pil)[..., ::-1]
 
-    if img_arr is not None:
         from shared.quality_check import check_quality
 
         q = check_quality(img_arr)
         if q["acceptable"]:
             st.success(
-                f"🟢 **In Focus & Sharp** (Sharpness Score: `{q['blur_score']:.1f}` | Resolution: `{q['resolution'][0]}x{q['resolution'][1]}`px)"
+                f"🟢 **In Focus & Sharp** (Sharpness Score: `{q['blur_score']:.1f}` | Optical Resolution: `{q['resolution'][0]}x{q['resolution'][1]}`px)"
             )
         else:
             st.warning(
-                f"⚠️ **Focus Warning**: {', '.join(q['issues'])}. *Hold steady, avoid glare and tap screen to focus.*"
+                f"⚠️ **Focus Warning**: {', '.join(q['issues'])}. *Tap screen on the card to focus and snap steadily.*"
             )
 
     return img_arr
@@ -719,20 +753,20 @@ def _display_results(results: dict):
             st.info("Complete the camera scans on the left to begin screening.")
 
 
-# ── Tab 2: Dedicated Instant QR Scanner & UIDAI Verifier ──────────────────────
+# ── Tab 2: Dedicated Live GPay-Style QR Scanner & UIDAI Verifier ──────────────
 
 with tab_qr_scanner:
-    st.subheader("🔍 Instant Aadhaar / Document QR Code Inspector")
+    st.subheader("⚡ Live GPay-Style QR Code Scanner & UIDAI Verifier")
     st.caption(
-        "Directly scan or upload a QR code to decode all embedded fields and verify UIDAI RSA-2048 offline cryptographic signatures."
+        "Point your camera directly at the QR code (front or back of Aadhaar) to automatically decode demographics and verify UIDAI RSA-2048 offline cryptographic signatures."
     )
 
     col_q1, col_q2 = st.columns([1, 1], gap="large")
 
     with col_q1:
-        st.markdown("#### Scan or Upload QR Code Image")
+        st.markdown("#### 📷 Live QR Viewfinder")
         qr_input_img = _render_image_input(
-            "Aadhaar / Document QR Code", "standalone_qr", "doc"
+            "Align QR Code in Center Frame", "standalone_qr", "qr"
         )
 
     with col_q2:
