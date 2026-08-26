@@ -17,11 +17,100 @@ LP = length-prefixed UTF-8 string (2-byte big-endian length header)
 
 import struct
 import xml.etree.ElementTree as ET
-from typing import Optional
+from typing import Optional, Tuple
 
+import cv2
 import numpy as np
 from PIL import Image
 from pyzbar.pyzbar import decode as pyzbar_decode
+
+
+def _detect_and_decode_qr(
+    image: np.ndarray,
+) -> Tuple[Optional[bytes], Optional[Tuple[int, int, int, int]]]:
+    """
+    Multi-pass QR code detector:
+    Tries raw RGB, grayscale, CLAHE contrast enhancement, Otsu binarization,
+    adaptive thresholding, and OpenCV QRCodeDetector.
+    """
+    if image is None or image.size == 0:
+        return None, None
+
+    def try_pyzbar(img_arr):
+        try:
+            pil_img = Image.fromarray(img_arr)
+            objs = pyzbar_decode(pil_img)
+            for obj in objs:
+                if obj.type == "QRCODE" and obj.data:
+                    r = obj.rect
+                    reg = (r.left, r.top, r.left + r.width, r.top + r.height)
+                    return obj.data, reg
+        except Exception:
+            pass
+        return None, None
+
+    # Pass 1: Raw image
+    data, reg = try_pyzbar(image)
+    if data:
+        return data, reg
+
+    # Convert to grayscale if 3-channel
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
+
+    # Pass 2: Grayscale
+    data, reg = try_pyzbar(gray)
+    if data:
+        return data, reg
+
+    # Pass 3: CLAHE contrast enhancement
+    try:
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+        data, reg = try_pyzbar(enhanced)
+        if data:
+            return data, reg
+    except Exception:
+        pass
+
+    # Pass 4: Otsu thresholding
+    try:
+        _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        data, reg = try_pyzbar(otsu)
+        if data:
+            return data, reg
+    except Exception:
+        pass
+
+    # Pass 5: Adaptive thresholding
+    try:
+        adaptive = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 51, 11
+        )
+        data, reg = try_pyzbar(adaptive)
+        if data:
+            return data, reg
+    except Exception:
+        pass
+
+    # Pass 6: cv2.QRCodeDetector fallback
+    try:
+        detector = cv2.QRCodeDetector()
+        val, points, _ = detector.detectAndDecode(gray)
+        if val:
+            reg = None
+            if points is not None and len(points) > 0:
+                pts = points[0]
+                x_min, y_min = int(np.min(pts[:, 0])), int(np.min(pts[:, 1]))
+                x_max, y_max = int(np.max(pts[:, 0])), int(np.max(pts[:, 1]))
+                reg = (x_min, y_min, x_max, y_max)
+            return val.encode("utf-8", errors="replace"), reg
+    except Exception:
+        pass
+
+    return None, None
 
 
 def decode_aadhaar_qr(image: np.ndarray) -> dict:
@@ -32,17 +121,7 @@ def decode_aadhaar_qr(image: np.ndarray) -> dict:
         dict with keys: format ('xml'|'binary'), fields (dict), raw_payload (bytes),
         signature (bytes), error (str|None)
     """
-    pil_image = Image.fromarray(image)
-    decoded_objects = pyzbar_decode(pil_image)
-
-    qr_data: Optional[bytes] = None
-    region = None
-    for obj in decoded_objects:
-        if obj.type == "QRCODE":
-            qr_data = obj.data
-            r = obj.rect
-            region = (r.left, r.top, r.left + r.width, r.top + r.height)
-            break
+    qr_data, region = _detect_and_decode_qr(image)
 
     if qr_data is None:
         return {"error": "No QR code detected", "fields": {}, "region": None}

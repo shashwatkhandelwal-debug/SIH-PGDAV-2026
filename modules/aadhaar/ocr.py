@@ -92,10 +92,29 @@ def extract_aadhaar_fields(image: np.ndarray) -> dict:
 
 
 def _extract_uid(text: str) -> Optional[str]:
-    """Extract 12-digit UID, stripping spaces."""
+    """Extract 12-digit UID, stripping spaces and common OCR letter confusions."""
     match = re.search(r"\b(\d{4}[\s\-]?\d{4}[\s\-]?\d{4})\b", text)
     if match:
         return re.sub(r"[\s\-]", "", match.group(1))
+
+    # Clean common OCR digit substitutions in numeric blocks
+    cleaned = re.sub(r"[Oo]", "0", text)
+    cleaned = re.sub(r"[Il|]", "1", cleaned)
+    cleaned = re.sub(r"[SsbB]", lambda m: {"S": "5", "s": "5", "b": "6", "B": "8"}.get(m.group(0), m.group(0)), cleaned)
+    match = re.search(r"\b(\d{4}[\s\-]?\d{4}[\s\-]?\d{4})\b", cleaned)
+    if match:
+        return re.sub(r"[\s\-]", "", match.group(1))
+
+    # Try matching any sequence of 12 digits separated by whitespace
+    digits = re.findall(r"\d+", cleaned)
+    joined_digits = "".join(digits)
+    if len(joined_digits) == 12:
+        return joined_digits
+    if len(joined_digits) > 12:
+        # Search for any 12-digit substring
+        for i in range(len(joined_digits) - 11):
+            cand = joined_digits[i : i + 12]
+            return cand
     return None
 
 

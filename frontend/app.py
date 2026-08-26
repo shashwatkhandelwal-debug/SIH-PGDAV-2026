@@ -354,7 +354,14 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
     results = {}
 
     ocr = extract_aadhaar_fields(front_img)
+    # Check back image for QR first; if not found, check front image
     qr = decode_aadhaar_qr(back_img)
+    qr_img_source = "back"
+    if qr.get("error") and front_img is not None:
+        qr_front = decode_aadhaar_qr(front_img)
+        if not qr_front.get("error"):
+            qr = qr_front
+            qr_img_source = "front"
 
     uid = ocr.get("uid") or qr.get("fields", {}).get("uid_last4", "")
 
@@ -364,7 +371,7 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
         "uid": uid,
     }
 
-    # 2. Cryptographic signature check on back-page QR
+    # 2. Cryptographic signature check on QR
     qr_region = None
     if not qr.get("error"):
         qr_region = qr.get("region")
@@ -373,7 +380,7 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
             "score": 1.0 if sig_result["valid"] else 0.0,
             **sig_result,
         }
-        # 3. Front OCR vs Back QR cross-check
+        # 3. Front OCR vs QR cross-check
         consistency = check_qr_ocr_consistency(qr["fields"], ocr)
         results["aadhaar_qr_ocr_consistency"] = {
             "score": 1.0 if consistency["consistent"] else 0.0,
@@ -382,7 +389,7 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
     else:
         results["aadhaar_uidai_signature"] = {
             "score": 0.0,
-            "error": "Aadhaar Back Secure QR not detected",
+            "error": "Aadhaar Secure QR not detected on front or back",
         }
         results["aadhaar_qr_ocr_consistency"] = {
             "score": 0.0,
@@ -404,7 +411,8 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
     }
 
     if qr_region:
-        ela_reg = run_ela(back_img, region=qr_region)
+        qr_target_img = back_img if qr_img_source == "back" else front_img
+        ela_reg = run_ela(qr_target_img, region=qr_region)
         results["ela_region_restricted"] = ela_reg
     else:
         results["ela_region_restricted"] = None
