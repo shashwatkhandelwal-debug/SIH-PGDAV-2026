@@ -319,8 +319,8 @@ def _run_screening(doc_type: str, inputs: dict, live_face_img=None) -> dict:
 
         live_emb = get_embedding(live_arr)
         if live_emb is not None:
-            doc_number = check_results.get("_meta", {}).get("doc_number", "")
-            name = check_results.get("_meta", {}).get("name", "")
+            doc_number = (check_results.get("_meta", {}).get("doc_number") or "")
+            name = (check_results.get("_meta", {}).get("name") or "")
             graph_res = search_and_store(live_emb, name, doc_number, doc_type)
             check_results["identity_graph"] = graph_res
 
@@ -411,7 +411,10 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
 
     results["_ocr"] = ocr
     results["_qr_fields"] = qr.get("fields", {})
-    results["_meta"] = {"doc_number": uid, "name": ocr.get("name_en", "")}
+    results["_meta"] = {
+        "doc_number": uid or "",
+        "name": ocr.get("name_en") or "",
+    }
 
     return results
 
@@ -507,7 +510,7 @@ def _screen_passport(bio_img: np.ndarray, extra_img: Optional[np.ndarray]) -> di
     name = (
         f"{(mrz or {}).get('surname', '')} {(mrz or {}).get('given_names', '')}".strip()
     )
-    results["_meta"] = {"doc_number": pn, "name": name}
+    results["_meta"] = {"doc_number": pn or "", "name": name or ""}
 
     return results
 
@@ -590,8 +593,8 @@ def _screen_visa(visa_img: np.ndarray, passport_img: np.ndarray) -> dict:
     results["_ocr"] = visa_fields
 
     results["_meta"] = {
-        "doc_number": (visa_fields or {}).get("visa_number", ""),
-        "name": (visa_fields or {}).get("applicant_name", ""),
+        "doc_number": (visa_fields or {}).get("visa_number") or "",
+        "name": (visa_fields or {}).get("applicant_name") or "",
     }
 
     return results

@@ -67,6 +67,11 @@ def search_and_store(
           conflict_details (list)   -  details of conflicting records
           stored_id (int)           -  row ID of newly stored record
     """
+    name = str(name or "UNKNOWN").strip()
+    doc_number = str(doc_number or "UNKNOWN").strip()
+    doc_type = str(doc_type or "UNKNOWN").strip()
+    checkpoint_id = str(checkpoint_id or "default").strip()
+
     if not _FAISS_AVAILABLE:
         return {
             "matches": [],
@@ -90,9 +95,6 @@ def search_and_store(
         for dist, idx in zip(D[0], I[0]):
             if idx < 0:
                 continue
-            similarity = float(1 - dist / 2)  # Convert L2 to cosine (unit vectors)
-            # For unit vectors: cosine_sim = 1 - (L2_dist² / 2)
-            # More accurately: cosine = 1 - L2²/2  (since ||a-b||² = 2 - 2·cos)
             similarity = max(0.0, 1.0 - (dist * dist) / 2.0)
 
             if similarity >= _MATCH_THRESHOLD:
@@ -102,8 +104,16 @@ def search_and_store(
                     matches.append(match)
 
                     # Identity conflict: same face, different name or document number
-                    name_mismatch = record["name"].upper() != name.upper()
-                    docnum_mismatch = record["doc_number"] != doc_number
+                    name_mismatch = (
+                        record["name"].upper() != "UNKNOWN"
+                        and name.upper() != "UNKNOWN"
+                        and record["name"].upper() != name.upper()
+                    )
+                    docnum_mismatch = (
+                        record["doc_number"] != "UNKNOWN"
+                        and doc_number != "UNKNOWN"
+                        and record["doc_number"] != doc_number
+                    )
                     if name_mismatch or docnum_mismatch:
                         conflicts.append(
                             {
@@ -189,22 +199,30 @@ def _store_record(
     doc_number: str,
     doc_type: str,
     checkpoint_id: str,
-) -> int:
+) -> Optional[int]:
+    name = str(name or "UNKNOWN").strip()
+    doc_number = str(doc_number or "UNKNOWN").strip()
+    doc_type = str(doc_type or "UNKNOWN").strip()
+    checkpoint_id = str(checkpoint_id or "default").strip()
+
     faiss_idx = index.ntotal
     index.add(embedding.reshape(1, -1).astype(np.float32))
-    cur = db.execute(
-        "INSERT INTO identity_records (name, doc_number, doc_type, checkpoint, timestamp, faiss_index) VALUES (?,?,?,?,?,?)",
-        (
-            name,
-            doc_number,
-            doc_type,
-            checkpoint_id,
-            datetime.utcnow().isoformat(),
-            faiss_idx,
-        ),
-    )
-    db.commit()
-    return cur.lastrowid
+    try:
+        cur = db.execute(
+            "INSERT INTO identity_records (name, doc_number, doc_type, checkpoint, timestamp, faiss_index) VALUES (?,?,?,?,?,?)",
+            (
+                name,
+                doc_number,
+                doc_type,
+                checkpoint_id,
+                datetime.utcnow().isoformat(),
+                faiss_idx,
+            ),
+        )
+        db.commit()
+        return cur.lastrowid
+    except Exception:
+        return None
 
 
 def _fetch_record(db, faiss_idx: int) -> Optional[dict]:
