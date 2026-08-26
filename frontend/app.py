@@ -102,166 +102,150 @@ st.title("🛂 AI Document Screening System")
 st.caption("Sashastra Seema Bal (SSB) | Ministry of Home Affairs | SIH 2026 - PS-6188")
 st.divider()
 
-# ── Document type selector ─────────────────────────────────────────────────────
-doc_type = st.radio(
-    "Select document type to screen:",
-    ["AADHAAR", "PASSPORT", "VISA"],
-    horizontal=True,
+# ── Top-Level Navigation Tabs ──────────────────────────────────────────────────
+tab_screening, tab_qr_scanner = st.tabs(
+    ["🛂 Full Document Screening", "🔍 Instant QR & Signature Scanner"]
 )
 
-# Handle manual tab switches
-if st.session_state.last_doc_type != doc_type:
-    st.session_state.last_doc_type = doc_type
-    for key in [
-        "start_front",
-        "start_back",
-        "start_bio",
-        "start_extra",
-        "start_visa",
-        "start_passport",
-        "start_face",
-    ]:
-        st.session_state[key] = False
-    st.rerun()
+# ── Helper for Image Inputs with Live Focus/Sharpness Meter ───────────────────
 
-st.divider()
 
-# ── Two-column layout: input left, results right ────────────────────────────────
-col_input, col_results = st.columns([1, 1], gap="large")
-
-with col_input:
-    st.subheader("📷 Live Document Scanning")
-
-    inputs = {}
-    ready_to_screen = False
-
-    if doc_type == "AADHAAR":
-        st.info(
-            "Aadhaar requires scanning both front (biometrics/photo) and back (secure QR/address)."
+def _render_image_input(
+    label: str, key_prefix: str, scan_type: str = "doc"
+) -> Optional[np.ndarray]:
+    """Render image input with choice of Live Camera or High-Res Upload, plus focus meter."""
+    col_m1, col_m2 = st.columns([1, 1])
+    with col_m1:
+        mode = st.radio(
+            f"Input Mode for {label}:",
+            ["📷 Live Camera", "📁 High-Res Photo"],
+            key=f"{key_prefix}_mode",
+            horizontal=True,
         )
+    with col_m2:
+        st.caption("💡 *Tip: Tap phone screen on text/QR to lock auto-focus before snapping.*")
 
-        # Step 1: Front Page
-        front_cam = None
-        if not st.session_state.start_front:
-            if st.button(
-                "📸 Scan Aadhaar Front (Photo side)", use_container_width=True
-            ):
-                st.session_state.start_front = True
-                st.rerun()
-        else:
-            st.markdown('<div class="doc-scan-container">', unsafe_allow_html=True)
-            front_cam = st.camera_input("📷 Scan Aadhaar Front (Photo side)")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        # Step 2: Back Page
-        back_cam = None
-        if not st.session_state.start_back:
-            if st.button(
-                "📸 Scan Aadhaar Back (QR code side)", use_container_width=True
-            ):
-                st.session_state.start_back = True
-                st.rerun()
-        else:
-            st.markdown('<div class="doc-scan-container">', unsafe_allow_html=True)
-            back_cam = st.camera_input("📷 Scan Aadhaar Back (QR code side)")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        if front_cam:
-            pil = Image.open(front_cam).convert("RGB")
-            inputs["front"] = np.array(pil)[..., ::-1]
-        if back_cam:
-            pil = Image.open(back_cam).convert("RGB")
-            inputs["back"] = np.array(pil)[..., ::-1]
-
-        ready_to_screen = "front" in inputs and "back" in inputs
-
-    elif doc_type == "PASSPORT":
-        st.info("Scan the main biographical data page (containing MRZ text at bottom).")
-
-        # Step 1: Bio page
-        bio_cam = None
-        if not st.session_state.start_bio:
-            if st.button(
-                "📸 Scan Passport Biographical Page", use_container_width=True
-            ):
-                st.session_state.start_bio = True
-                st.rerun()
-        else:
-            st.markdown('<div class="doc-scan-container">', unsafe_allow_html=True)
-            bio_cam = st.camera_input("📷 Scan Passport Biographical Page")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        # Step 2: Secondary cover page
-        extra_cam = None
-        if not st.session_state.start_extra:
-            if st.button(
-                "📸 Scan Secondary / Cover Page (Optional)", use_container_width=True
-            ):
-                st.session_state.start_extra = True
-                st.rerun()
-        else:
-            st.markdown('<div class="doc-scan-container">', unsafe_allow_html=True)
-            extra_cam = st.camera_input("📷 Scan Secondary / Cover Page")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        if bio_cam:
-            pil = Image.open(bio_cam).convert("RGB")
-            inputs["bio"] = np.array(pil)[..., ::-1]
-        if extra_cam:
-            pil = Image.open(extra_cam).convert("RGB")
-            inputs["extra"] = np.array(pil)[..., ::-1]
-
-        ready_to_screen = "bio" in inputs
-
-    elif doc_type == "VISA":
-        st.info(
-            "Scan the Visa stamp/sticker, plus the traveler's passport biographical page to run automatic binding verification."
+    img_arr = None
+    if mode == "📷 Live Camera":
+        st.markdown(f'<div class="{scan_type}-scan-container">', unsafe_allow_html=True)
+        cam_file = st.camera_input(f"📷 {label}", key=f"{key_prefix}_cam")
+        st.markdown("</div>", unsafe_allow_html=True)
+        if cam_file:
+            pil = Image.open(cam_file).convert("RGB")
+            img_arr = np.array(pil)[..., ::-1]
+    else:
+        upload_file = st.file_uploader(
+            f"📁 Upload {label} (Use phone camera photo with optical autofocus)",
+            type=["jpg", "jpeg", "png"],
+            key=f"{key_prefix}_upload",
         )
+        if upload_file:
+            pil = Image.open(upload_file).convert("RGB")
+            img_arr = np.array(pil)[..., ::-1]
 
-        # Step 1: Visa stamp
-        visa_cam = None
-        if not st.session_state.start_visa:
-            if st.button("📸 Scan Visa Stamp", use_container_width=True):
-                st.session_state.start_visa = True
-                st.rerun()
+    if img_arr is not None:
+        from shared.quality_check import check_quality
+
+        q = check_quality(img_arr)
+        if q["acceptable"]:
+            st.success(
+                f"🟢 **In Focus & Sharp** (Sharpness Score: `{q['blur_score']:.1f}` | Resolution: `{q['resolution'][0]}x{q['resolution'][1]}`px)"
+            )
         else:
-            st.markdown('<div class="doc-scan-container">', unsafe_allow_html=True)
-            visa_cam = st.camera_input("📷 Scan Visa Stamp")
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.warning(
+                f"⚠️ **Focus Warning**: {', '.join(q['issues'])}. *Hold steady, avoid glare and tap screen to focus.*"
+            )
 
-        # Step 2: Passport bio
-        pass_cam = None
-        if not st.session_state.start_passport:
-            if st.button("📸 Scan Passport Page for binding", use_container_width=True):
-                st.session_state.start_passport = True
-                st.rerun()
-        else:
-            st.markdown('<div class="doc-scan-container">', unsafe_allow_html=True)
-            pass_cam = st.camera_input("📷 Scan Passport Page")
-            st.markdown("</div>", unsafe_allow_html=True)
+    return img_arr
 
-        if visa_cam:
-            pil = Image.open(visa_cam).convert("RGB")
-            inputs["visa"] = np.array(pil)[..., ::-1]
-        if pass_cam:
-            pil = Image.open(pass_cam).convert("RGB")
-            inputs["passport"] = np.array(pil)[..., ::-1]
 
-        ready_to_screen = "visa" in inputs and "passport" in inputs
+# ── Tab 1: Full Document Screening ─────────────────────────────────────────────
+
+with tab_screening:
+    # Document type selector
+    doc_type = st.radio(
+        "Select document type to screen:",
+        ["AADHAAR", "PASSPORT", "VISA"],
+        horizontal=True,
+    )
+
+    if st.session_state.last_doc_type != doc_type:
+        st.session_state.last_doc_type = doc_type
+        st.rerun()
 
     st.divider()
 
-    # Live face capture (for face match)
-    st.subheader("🤳 Traveler Live Face Verification")
-    live_face = None
-    if not st.session_state.start_face:
-        if st.button("📸 Open Face Selfie Camera", use_container_width=True):
-            st.session_state.start_face = True
-            st.rerun()
-    else:
-        st.markdown('<div class="face-scan-container">', unsafe_allow_html=True)
-        live_face = st.camera_input("Capture traveler's face")
-        st.markdown("</div>", unsafe_allow_html=True)
+    col_input, col_results = st.columns([1, 1], gap="large")
+
+    with col_input:
+        st.subheader("📷 Document Capture")
+
+        inputs = {}
+        ready_to_screen = False
+
+        if doc_type == "AADHAAR":
+            st.info(
+                "Aadhaar requires scanning front (photo side) and back (secure QR/address side)."
+            )
+
+            # Front scan
+            st.markdown("#### 1. Aadhaar Front (Photo & UID)")
+            front_img = _render_image_input("Aadhaar Front", "front", "doc")
+            if front_img is not None:
+                inputs["front"] = front_img
+
+            # Back scan
+            st.markdown("#### 2. Aadhaar Back (Secure QR Code)")
+            back_img = _render_image_input("Aadhaar Back", "back", "doc")
+            if back_img is not None:
+                inputs["back"] = back_img
+
+            ready_to_screen = "front" in inputs and "back" in inputs
+
+        elif doc_type == "PASSPORT":
+            st.info(
+                "Scan the main biographical data page (containing MRZ lines at bottom)."
+            )
+
+            # Bio page
+            st.markdown("#### 1. Passport Biographical Page")
+            bio_img = _render_image_input("Passport Bio Page", "bio", "doc")
+            if bio_img is not None:
+                inputs["bio"] = bio_img
+
+            # Optional extra page
+            st.markdown("#### 2. Secondary / Cover Page (Optional)")
+            extra_img = _render_image_input("Secondary Page", "extra", "doc")
+            if extra_img is not None:
+                inputs["extra"] = extra_img
+
+            ready_to_screen = "bio" in inputs
+
+        elif doc_type == "VISA":
+            st.info(
+                "Scan the Visa sticker, plus traveler's passport biographical page for binding."
+            )
+
+            # Visa stamp
+            st.markdown("#### 1. Visa Stamp / Sticker")
+            visa_img = _render_image_input("Visa Stamp", "visa", "doc")
+            if visa_img is not None:
+                inputs["visa"] = visa_img
+
+            # Passport bio for binding
+            st.markdown("#### 2. Passport Bio Page")
+            pass_img = _render_image_input("Passport Page", "pass", "doc")
+            if pass_img is not None:
+                inputs["passport"] = pass_img
+
+            ready_to_screen = "visa" in inputs and "passport" in inputs
+
+        st.divider()
+
+        # Live face capture
+        st.subheader("🤳 Traveler Live Face Verification")
+        st.caption("Captures live selfie to match against document photo and verify liveness.")
+        live_face = _render_image_input("Traveler Face Capture", "live_face", "face")
 
 
 # ── Screening orchestrator ─────────────────────────────────────────────────────
@@ -723,13 +707,73 @@ def _display_results(results: dict):
 
 # ── Render results column ──────────────────────────────────────────────────────
 
-with col_results:
-    st.subheader("📊 Screening Results")
+    with col_results:
+        st.subheader("📊 Screening Results")
 
-    if ready_to_screen:
-        with st.spinner("Running deep document verification..."):
-            results = _run_screening(doc_type, inputs, live_face)
+        if ready_to_screen:
+            with st.spinner("Running deep document verification..."):
+                results = _run_screening(doc_type, inputs, live_face)
 
-        _display_results(results)
-    else:
-        st.info("Complete the camera scans on the left to begin screening.")
+            _display_results(results)
+        else:
+            st.info("Complete the camera scans on the left to begin screening.")
+
+
+# ── Tab 2: Dedicated Instant QR Scanner & UIDAI Verifier ──────────────────────
+
+with tab_qr_scanner:
+    st.subheader("🔍 Instant Aadhaar / Document QR Code Inspector")
+    st.caption(
+        "Directly scan or upload a QR code to decode all embedded fields and verify UIDAI RSA-2048 offline cryptographic signatures."
+    )
+
+    col_q1, col_q2 = st.columns([1, 1], gap="large")
+
+    with col_q1:
+        st.markdown("#### Scan or Upload QR Code Image")
+        qr_input_img = _render_image_input(
+            "Aadhaar / Document QR Code", "standalone_qr", "doc"
+        )
+
+    with col_q2:
+        st.markdown("#### Cryptographic & Demographic Results")
+        if qr_input_img is not None:
+            with st.spinner("Decoding QR code and verifying digital signature..."):
+                from modules.aadhaar.qr import decode_aadhaar_qr
+                from modules.aadhaar.signature import verify_uidai_signature
+
+                qr_res = decode_aadhaar_qr(qr_input_img)
+
+                if qr_res.get("error"):
+                    st.error(f"❌ {qr_res['error']}")
+                    st.info(
+                        "💡 *Tip: Ensure the entire square QR code is in frame, well lit, and free of plastic reflections.*"
+                    )
+                else:
+                    format_type = qr_res.get("format", "unknown").upper()
+                    st.success(f"✅ **QR Code Detected**: Format `{format_type}`")
+
+                    # Verify UIDAI signature
+                    sig_res = verify_uidai_signature(
+                        qr_res["raw_payload"], qr_res["signature"]
+                    )
+                    if sig_res.get("valid"):
+                        st.success(
+                            "🔒 **UIDAI Cryptographic Signature: VALID** (Authentic government-issued QR code)"
+                        )
+                    else:
+                        st.error(
+                            f"⚠️ **UIDAI Cryptographic Signature: INVALID** ({sig_res.get('error', 'Tampered payload')})"
+                        )
+
+                    st.divider()
+                    st.markdown("##### 👤 Decoded Demographics (from Signed Payload)")
+                    fields = qr_res.get("fields", {})
+                    if fields:
+                        for k, v in fields.items():
+                            if v:
+                                st.markdown(f"**{k.replace('_', ' ').title()}**: `{v}`")
+                    else:
+                        st.info("No text fields decoded from QR payload.")
+        else:
+            st.info("Scan or upload a QR code on the left to view decoded results.")
