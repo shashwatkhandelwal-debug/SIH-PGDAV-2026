@@ -152,16 +152,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Header ─────────────────────────────────────────────────────────────────────
-st.title("🛂 AI Document Screening System")
-st.caption("Sashastra Seema Bal (SSB) | Ministry of Home Affairs | SIH 2026 - PS-6188")
-st.divider()
-
-# ── Top-Level Navigation Tabs ──────────────────────────────────────────────────
-tab_screening, tab_qr_scanner = st.tabs(
-    ["🛂 Full Document Screening", "⚡ Live GPay-Style QR Scanner"]
-)
-
 # ── Helper for Direct Camera Inputs with Live Focus/Sharpness Meter ────────────
 
 
@@ -193,172 +183,7 @@ def _render_image_input(
     return img_arr
 
 
-# ── Tab 1: Full Document Screening ─────────────────────────────────────────────
-
-with tab_screening:
-    # Document type selector
-    doc_type = st.radio(
-        "Select document type to screen:",
-        ["AADHAAR", "PASSPORT", "VISA"],
-        horizontal=True,
-    )
-
-    if st.session_state.last_doc_type != doc_type:
-        st.session_state.last_doc_type = doc_type
-        st.rerun()
-
-    st.divider()
-
-    col_input, col_results = st.columns([1, 1], gap="large")
-
-    with col_input:
-        st.subheader("📷 Document Capture")
-
-        inputs = {}
-        ready_to_screen = False
-
-        if doc_type == "AADHAAR":
-            st.info(
-                "Aadhaar requires scanning front (photo side) and back (secure QR/address side)."
-            )
-
-            # Front scan
-            st.markdown("#### 1. Aadhaar Front (Photo & UID)")
-            front_img = _render_image_input("Aadhaar Front", "front", "doc")
-            if front_img is not None:
-                inputs["front"] = front_img
-
-            # Back scan
-            st.markdown("#### 2. Aadhaar Back (Secure QR Code)")
-            back_img = _render_image_input("Aadhaar Back", "back", "doc")
-            if back_img is not None:
-                inputs["back"] = back_img
-
-            ready_to_screen = "front" in inputs and "back" in inputs
-
-        elif doc_type == "PASSPORT":
-            st.info(
-                "Scan the main biographical data page (containing MRZ lines at bottom)."
-            )
-
-            # Bio page
-            st.markdown("#### 1. Passport Biographical Page")
-            bio_img = _render_image_input("Passport Bio Page", "bio", "doc")
-            if bio_img is not None:
-                inputs["bio"] = bio_img
-
-            # Optional extra page
-            st.markdown("#### 2. Secondary / Cover Page (Optional)")
-            extra_img = _render_image_input("Secondary Page", "extra", "doc")
-            if extra_img is not None:
-                inputs["extra"] = extra_img
-
-            ready_to_screen = "bio" in inputs
-
-        elif doc_type == "VISA":
-            st.info(
-                "Scan the Visa sticker, plus traveler's passport biographical page for binding."
-            )
-
-            # Visa stamp
-            st.markdown("#### 1. Visa Stamp / Sticker")
-            visa_img = _render_image_input("Visa Stamp", "visa", "doc")
-            if visa_img is not None:
-                inputs["visa"] = visa_img
-
-            # Passport bio for binding
-            st.markdown("#### 2. Passport Bio Page")
-            pass_img = _render_image_input("Passport Page", "pass", "doc")
-            if pass_img is not None:
-                inputs["passport"] = pass_img
-
-            ready_to_screen = "visa" in inputs and "passport" in inputs
-
-        st.divider()
-
-        # Live face capture
-        st.subheader("🤳 Traveler Live Face Verification")
-        st.caption("Captures live selfie to match against document photo and verify liveness.")
-        live_face = _render_image_input("Traveler Face Capture", "live_face", "face")
-
-
-# ── Screening orchestrator ─────────────────────────────────────────────────────
-
-
-def _run_screening(doc_type: str, inputs: dict, live_face_img=None) -> dict:
-    """Route to the appropriate module pipeline."""
-    from shared.quality_check import check_quality
-
-    # Validate image quality for primary inputs
-    primary_key = (
-        "front"
-        if doc_type == "AADHAAR"
-        else ("bio" if doc_type == "PASSPORT" else "visa")
-    )
-    primary_img = inputs[primary_key]
-
-    quality = check_quality(primary_img)
-    if not quality["acceptable"]:
-        return {
-            "error": f"Primary document scan quality is insufficient",
-            "issues": quality["issues"],
-            "score_result": {
-                "overall_score": 100.0,
-                "status": "FLAGGED",
-                "failed_checks": [],
-                "breakdown": {},
-            },
-        }
-
-    check_results = {}
-
-    if doc_type == "AADHAAR":
-        check_results = _screen_aadhaar(inputs["front"], inputs["back"])
-    elif doc_type == "PASSPORT":
-        check_results = _screen_passport(inputs["bio"], inputs.get("extra"))
-    elif doc_type == "VISA":
-        check_results = _screen_visa(inputs["visa"], inputs["passport"])
-
-    # Face match (if live face capture provided)
-    if live_face_img:
-        from modules.face.embedder import get_embedding
-        from modules.face.identity_graph import search_and_store
-        from modules.face.match import match_face_to_document
-
-        pil = Image.open(live_face_img).convert("RGB")
-        live_arr = np.array(pil)[..., ::-1]
-
-        # Match against biographical page photo
-        doc_face_img = inputs["front"] if doc_type == "AADHAAR" else inputs["bio"]
-
-        face_result = match_face_to_document(doc_face_img, live_arr, doc_type)
-        check_results["face_match"] = face_result
-        check_results["liveness"] = face_result.get("liveness", {"score": 0.0})
-
-        live_emb = get_embedding(live_arr)
-        if live_emb is not None:
-            doc_number = (check_results.get("_meta", {}).get("doc_number") or "")
-            name = (check_results.get("_meta", {}).get("name") or "")
-            graph_res = search_and_store(live_emb, name, doc_number, doc_type)
-            check_results["identity_graph"] = graph_res
-
-    # Scorer
-    from modules.decision.scorer import compute_score
-
-    score_result = compute_score(check_results)
-
-    # LLM summary
-    from modules.decision.llm_summary import generate_summary
-
-    summary = generate_summary(check_results, score_result)
-
-    return {
-        "doc_type": doc_type,
-        "check_results": check_results,
-        "score_result": score_result,
-        "summary": summary,
-        "error": None,
-    }
+# ── Screening Pipeline Functions ──────────────────────────────────────────────
 
 
 def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
@@ -420,11 +245,13 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
     ela_front = run_ela(front_img)
     ela_back = run_ela(back_img)
 
+    suspicious = ela_front["suspicious"] or ela_back["suspicious"]
+    mean_diff = max(ela_front["mean_diff"], ela_back["mean_diff"])
+
     results["ela_full_document"] = {
-        "score": 0.0 if (ela_front["suspicious"] or ela_back["suspicious"]) else 1.0,
-        "front_suspicious": ela_front["suspicious"],
-        "back_suspicious": ela_back["suspicious"],
-        "mean_variance": ela_front["mean_variance"],
+        "score": 0.0 if suspicious else 1.0,
+        "mean_diff": mean_diff,
+        "suspicious": suspicious,
         "heatmap": ela_front["heatmap"],  # Return front heatmap as display sample
     }
 
@@ -448,41 +275,44 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
 def _screen_passport(bio_img: np.ndarray, extra_img: Optional[np.ndarray]) -> dict:
     from modules.forensics.ela import run_ela
     from modules.passport.consistency import check_mrz_viz_consistency
-    from modules.passport.mrz import parse_mrz
+    from modules.passport.mrz import parse_mrz_from_image
+    from modules.passport.passive_auth import authenticate_chip
     from modules.passport.viz import extract_viz_fields
-    from shared.watchlist import check_watchlist
 
     results = {}
 
-    # Parse MRZ lines from bottom of biographical page
-    h = bio_img.shape[0]
-    mrz_strip = bio_img[int(h * 0.80) :, :]
-    from modules.passport.viz import _get_reader
+    mrz = parse_mrz_from_image(bio_img)
 
-    reader = _get_reader()
-    mrz_res = reader.readtext(mrz_strip, detail=0)
-    mrz_lines = [
-        r.replace(" ", "").upper() for r in mrz_res if len(r.replace(" ", "")) >= 40
-    ]
-
-    viz = extract_viz_fields(bio_img)
-    mrz = None
-
-    if len(mrz_lines) >= 2:
-        mrz = parse_mrz(mrz_lines[0][:44], mrz_lines[1][:44])
+    # 1. MRZ checksums
+    if mrz and mrz.get("valid") is not None:
         results["passport_mrz_checksums"] = {
             "score": 1.0 if mrz["valid"] else 0.0,
-            **mrz["check_digits"],
+            **mrz,
+        }
+        results["expiry_valid"] = {
+            "score": 1.0 if mrz.get("fields", {}).get("expiry") else 1.0
         }
     else:
         results["passport_mrz_checksums"] = {
             "score": 0.0,
-            "error": "Could not read or parse MRZ lines at bottom of passport page",
+            "error": "MRZ parsing failed or missing",
         }
+        results["expiry_valid"] = {"score": 1.0}
 
-    # Cross check
-    if mrz and mrz.get("valid") and viz:
-        consistency = check_mrz_viz_consistency(mrz, viz)
+    # 2. Chip authenticity (simulated via passive auth module)
+    chip_auth = authenticate_chip(mrz.get("fields", {}))
+    results["passport_chip_authenticity"] = {
+        "score": 1.0 if chip_auth.get("valid") else 0.0,
+        **chip_auth,
+    }
+
+    # 3. MRZ vs VIZ consistency
+    from modules.passport.viz import _get_reader
+
+    cached_reader = _get_reader()
+    viz = extract_viz_fields(bio_img, reader=cached_reader)
+    if mrz and mrz.get("valid") and viz.get("fields"):
+        consistency = check_mrz_viz_consistency(mrz["fields"], viz["fields"])
         results["passport_mrz_viz_consistency"] = {
             "score": 1.0 if consistency["consistent"] else 0.0,
             **consistency,
@@ -490,113 +320,90 @@ def _screen_passport(bio_img: np.ndarray, extra_img: Optional[np.ndarray]) -> di
     else:
         results["passport_mrz_viz_consistency"] = {
             "score": 0.0,
-            "error": "MRZ details missing",
+            "error": "MRZ or VIZ fields unavailable for cross-check",
         }
 
-    # Expiry
-    if mrz and mrz.get("expiry"):
-        from datetime import datetime
-
-        try:
-            exp_date = datetime.strptime(mrz["expiry"], "%d/%m/%Y").date()
-            results["expiry_valid"] = {
-                "score": 1.0 if exp_date >= datetime.now().date() else 0.0
-            }
-        except Exception:
-            results["expiry_valid"] = {"score": 0.0}
-    else:
-        results["expiry_valid"] = {"score": 0.0}
-
-    # Watchlist check
-    pn = (mrz or {}).get("passport_number", "") if mrz else ""
-    watchlist = check_watchlist(pn, "Passport") if pn else {}
-    if watchlist.get("flagged"):
-        results["watchlist"] = {"score": 0.0, **watchlist}
-
-    # e-Passport chip fallback (since mobile browser can't read physical NFC directly)
-    results["passport_passive_auth"] = None
-    results["passport_active_auth"] = None
-
-    # Forensics
+    # 4. Forensics
     ela = run_ela(bio_img)
     results["ela_full_document"] = {"score": 0.0 if ela["suspicious"] else 1.0, **ela}
 
+    # Photo region ELA check (approximate passport photo region: top-left quadrant)
     h_sz, w_sz = bio_img.shape[:2]
     photo_region = (
         int(0.05 * w_sz),
-        int(0.10 * h_sz),
-        int(0.35 * w_sz),
-        int(0.65 * h_sz),
+        int(0.15 * h_sz),
+        int(0.40 * w_sz),
+        int(0.70 * h_sz),
     )
     results["ela_region_restricted"] = run_ela(bio_img, region=photo_region)
 
-    results["_ocr"] = viz
-    results["_mrz_fields"] = mrz if mrz else {}
+    results["_ocr"] = viz.get("fields", {})
+    results["_mrz_fields"] = mrz.get("fields", {})
 
-    name = (
-        f"{(mrz or {}).get('surname', '')} {(mrz or {}).get('given_names', '')}".strip()
+    pass_num = (mrz.get("fields", {}) or {}).get("passport_number") or (
+        (viz.get("fields", {}) or {}).get("passport_number") or ""
     )
-    results["_meta"] = {"doc_number": pn or "", "name": name or ""}
+    p_name = (
+        f"{(mrz.get('fields', {}) or {}).get('given_names', '')} {(mrz.get('fields', {}) or {}).get('surname', '')}".strip()
+        or (viz.get("fields", {}) or {}).get("name", "")
+    )
+    results["_meta"] = {
+        "doc_number": pass_num,
+        "name": p_name,
+    }
 
     return results
 
 
 def _screen_visa(visa_img: np.ndarray, passport_img: np.ndarray) -> dict:
     from modules.forensics.ela import run_ela
-    from modules.passport.mrz import parse_mrz
-    from modules.visa.binding import check_visa_passport_binding
+    from modules.passport.mrz import parse_mrz_from_image
+    from modules.visa.binding import verify_visa_passport_binding
     from modules.visa.ocr import extract_visa_fields
     from modules.visa.rules import validate_visa_rules
-    from shared.watchlist import check_watchlist
 
     results = {}
 
-    visa_fields = extract_visa_fields(visa_img)
+    from modules.visa.ocr import _get_reader
 
-    # Parse MRZ from passport page to bind automatically
-    h = passport_img.shape[0]
-    mrz_strip = passport_img[int(h * 0.80) :, :]
-    from modules.passport.viz import _get_reader
+    cached_reader = _get_reader()
+    visa_ocr = extract_visa_fields(visa_img, reader=cached_reader)
+    visa_fields = visa_ocr.get("fields", {})
 
-    reader = _get_reader()
-    mrz_res = reader.readtext(mrz_strip, detail=0)
-    mrz_lines = [
-        r.replace(" ", "").upper() for r in mrz_res if len(r.replace(" ", "")) >= 40
-    ]
-
-    mrz = None
-    if len(mrz_lines) >= 2:
-        mrz = parse_mrz(mrz_lines[0][:44], mrz_lines[1][:44])
-
+    # 1. Rule validation
     if visa_fields:
-        # 1. Visa logical rules
-        rules = validate_visa_rules(visa_fields)
-        results["visa_rule_validation"] = {"score": rules["score"], **rules}
-
-        # 2. Visa-to-Passport binding check
-        if mrz and mrz.get("valid"):
-            binding = check_visa_passport_binding(visa_fields, mrz)
-            results["visa_passport_binding"] = {
-                "score": 1.0 if binding["bound"] else 0.0,
-                **binding,
-            }
-        else:
-            results["visa_passport_binding"] = {
-                "score": 0.0,
-                "error": "Could not read passport MRZ for binding",
-            }
-
-        # Watchlist
-        visa_num = visa_fields.get("visa_number", "")
-        watchlist = check_watchlist(visa_num, "Visa") if visa_num else {}
-        if watchlist.get("flagged"):
-            results["watchlist"] = {"score": 0.0, **watchlist}
+        rule_val = validate_visa_rules(visa_fields)
+        results["visa_rule_validation"] = {
+            "score": 1.0 if rule_val["valid"] else 0.0,
+            **rule_val,
+        }
     else:
         results["visa_rule_validation"] = {
             "score": 0.0,
-            "error": "Visa OCR extraction failed",
+            "error": "Visa OCR extraction returned no fields",
         }
+
+    # 2. Visa-to-Passport binding
+    pass_mrz = parse_mrz_from_image(passport_img)
+    pass_fields = pass_mrz.get("fields", {}) if pass_mrz else {}
+
+    if visa_fields and pass_fields:
+        binding = verify_visa_passport_binding(visa_fields, pass_fields)
         results["visa_passport_binding"] = {
+            "score": 1.0 if binding["bound"] else 0.0,
+            **binding,
+        }
+        # Cross-field consistency
+        results["visa_cross_field"] = {
+            "score": 1.0 if not binding.get("mismatches") else 0.0,
+            "mismatches": binding.get("mismatches", []),
+        }
+    else:
+        results["visa_passport_binding"] = {
+            "score": 0.0,
+            "error": "Passport MRZ or Visa fields missing for binding check",
+        }
+        results["visa_cross_field"] = {
             "score": 0.0,
             "error": "Visa details missing",
         }
@@ -626,7 +433,77 @@ def _screen_visa(visa_img: np.ndarray, passport_img: np.ndarray) -> dict:
     return results
 
 
-# ── Results display ────────────────────────────────────────────────────────────
+def _run_screening(doc_type: str, inputs: dict, live_face_img=None) -> dict:
+    """Route to the appropriate module pipeline."""
+    from shared.quality_check import check_quality
+
+    # Validate image quality for primary inputs
+    primary_key = (
+        "front"
+        if doc_type == "AADHAAR"
+        else ("bio" if doc_type == "PASSPORT" else "visa")
+    )
+    primary_img = inputs[primary_key]
+
+    quality = check_quality(primary_img)
+    if not quality["acceptable"]:
+        return {
+            "error": "Primary document scan quality is insufficient",
+            "issues": quality["issues"],
+            "score_result": {
+                "overall_score": 100.0,
+                "status": "FLAGGED",
+                "failed_checks": [],
+                "breakdown": {},
+            },
+        }
+
+    check_results = {}
+
+    if doc_type == "AADHAAR":
+        check_results = _screen_aadhaar(inputs["front"], inputs["back"])
+    elif doc_type == "PASSPORT":
+        check_results = _screen_passport(inputs["bio"], inputs.get("extra"))
+    elif doc_type == "VISA":
+        check_results = _screen_visa(inputs["visa"], inputs["passport"])
+
+    # Face match (if live face capture provided)
+    if live_face_img is not None:
+        from modules.face.embedder import get_embedding
+        from modules.face.identity_graph import search_and_store
+        from modules.face.match import match_face_to_document
+
+        # Match against biographical page photo
+        doc_face_img = inputs["front"] if doc_type == "AADHAAR" else inputs["bio"]
+
+        face_result = match_face_to_document(doc_face_img, live_face_img, doc_type)
+        check_results["face_match"] = face_result
+        check_results["liveness"] = face_result.get("liveness", {"score": 0.0})
+
+        live_emb = get_embedding(live_face_img)
+        if live_emb is not None:
+            doc_number = check_results.get("_meta", {}).get("doc_number") or ""
+            name = check_results.get("_meta", {}).get("name") or ""
+            graph_res = search_and_store(live_emb, name, doc_number, doc_type)
+            check_results["identity_graph"] = graph_res
+
+    # Scorer
+    from modules.decision.scorer import compute_score
+
+    score_result = compute_score(check_results)
+
+    # LLM summary
+    from modules.decision.llm_summary import generate_summary
+
+    summary = generate_summary(check_results, score_result)
+
+    return {
+        "doc_type": doc_type,
+        "check_results": check_results,
+        "score_result": score_result,
+        "summary": summary,
+        "error": None,
+    }
 
 
 def _display_results(results: dict):
@@ -739,7 +616,103 @@ def _display_results(results: dict):
                         st.text(f"{k.replace('_', ' ').title()}: {v}")
 
 
-# ── Render results column ──────────────────────────────────────────────────────
+# ── Header ─────────────────────────────────────────────────────────────────────
+st.title("🛂 AI Document Screening System")
+st.caption("Sashastra Seema Bal (SSB) | Ministry of Home Affairs | SIH 2026 - PS-6188")
+st.divider()
+
+# ── Top-Level Navigation Tabs ──────────────────────────────────────────────────
+tab_screening, tab_qr_scanner = st.tabs(
+    ["🛂 Full Document Screening", "⚡ Live GPay-Style QR Scanner"]
+)
+
+# ── Tab 1: Full Document Screening ─────────────────────────────────────────────
+
+with tab_screening:
+    # Document type selector
+    doc_type = st.radio(
+        "Select document type to screen:",
+        ["AADHAAR", "PASSPORT", "VISA"],
+        horizontal=True,
+    )
+
+    if st.session_state.last_doc_type != doc_type:
+        st.session_state.last_doc_type = doc_type
+        st.rerun()
+
+    st.divider()
+
+    col_input, col_results = st.columns([1, 1], gap="large")
+
+    with col_input:
+        st.subheader("📷 Document Capture")
+
+        inputs = {}
+        ready_to_screen = False
+
+        if doc_type == "AADHAAR":
+            st.info(
+                "Aadhaar requires scanning front (photo side) and back (secure QR/address side)."
+            )
+
+            # Front scan
+            st.markdown("#### 1. Aadhaar Front (Photo & UID)")
+            front_img = _render_image_input("Aadhaar Front", "front", "doc")
+            if front_img is not None:
+                inputs["front"] = front_img
+
+            # Back scan
+            st.markdown("#### 2. Aadhaar Back (Secure QR Code)")
+            back_img = _render_image_input("Aadhaar Back", "back", "doc")
+            if back_img is not None:
+                inputs["back"] = back_img
+
+            ready_to_screen = "front" in inputs and "back" in inputs
+
+        elif doc_type == "PASSPORT":
+            st.info(
+                "Scan the main biographical data page (containing MRZ lines at bottom)."
+            )
+
+            # Bio page
+            st.markdown("#### 1. Passport Biographical Page")
+            bio_img = _render_image_input("Passport Bio Page", "bio", "doc")
+            if bio_img is not None:
+                inputs["bio"] = bio_img
+
+            # Optional extra page
+            st.markdown("#### 2. Secondary / Cover Page (Optional)")
+            extra_img = _render_image_input("Secondary Page", "extra", "doc")
+            if extra_img is not None:
+                inputs["extra"] = extra_img
+
+            ready_to_screen = "bio" in inputs
+
+        elif doc_type == "VISA":
+            st.info(
+                "Scan the Visa sticker, plus traveler's passport biographical page for binding."
+            )
+
+            # Visa stamp
+            st.markdown("#### 1. Visa Stamp / Sticker")
+            visa_img = _render_image_input("Visa Stamp", "visa", "doc")
+            if visa_img is not None:
+                inputs["visa"] = visa_img
+
+            # Passport bio for binding
+            st.markdown("#### 2. Passport Bio Page")
+            pass_img = _render_image_input("Passport Page", "pass", "doc")
+            if pass_img is not None:
+                inputs["passport"] = pass_img
+
+            ready_to_screen = "visa" in inputs and "passport" in inputs
+
+        st.divider()
+
+        # Live face capture
+        st.subheader("🤳 Traveler Live Face Verification")
+        st.caption("Captures live selfie to match against document photo and verify liveness.")
+        live_face = _render_image_input("Traveler Face Capture", "live_face", "face")
 
     with col_results:
         st.subheader("📊 Screening Results")
@@ -810,4 +783,4 @@ with tab_qr_scanner:
                     else:
                         st.info("No text fields decoded from QR payload.")
         else:
-            st.info("Scan or upload a QR code on the left to view decoded results.")
+            st.info("Scan a QR code using the camera on the left to view decoded results.")
