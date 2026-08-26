@@ -644,7 +644,11 @@ def _display_results(results: dict):
             match_status = "✅ MATCHED" if face_match.get("matched") else "❌ MISMATCH"
             color = "green" if face_match.get("matched") else "red"
             st.markdown(f"Status: :{color}[**{match_status}**]")
-            st.metric("Similarity", f"{face_match.get('similarity', 0.0) * 100:.1f}%")
+            sim = face_match.get("similarity")
+            if sim is not None:
+                st.metric("Similarity", f"{float(sim) * 100:.1f}%")
+            else:
+                st.metric("Similarity", "N/A")
         with col_f2:
             liveness_res = check_results.get("liveness", {})
             live_status = (
@@ -652,7 +656,11 @@ def _display_results(results: dict):
             )
             l_color = "green" if liveness_res.get("is_live") else "red"
             st.markdown(f"Liveness Check: :{l_color}[**{live_status}**]")
-            st.metric("Liveness Score", f"{liveness_res.get('score', 0.0) * 100:.1f}%")
+            live_s = liveness_res.get("score")
+            if live_s is not None:
+                st.metric("Liveness Score", f"{float(live_s) * 100:.1f}%")
+            else:
+                st.metric("Liveness Score", "N/A")
 
     st.divider()
 
