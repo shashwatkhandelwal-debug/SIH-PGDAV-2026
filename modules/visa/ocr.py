@@ -12,6 +12,7 @@ Extracts:
   - Applicant name
 """
 
+import os
 import re
 from typing import Optional
 
@@ -21,10 +22,30 @@ import numpy as np
 _reader: Optional[easyocr.Reader] = None
 
 
+def _clean_corrupt_easyocr_models():
+    """Remove partial or corrupted model files from EasyOCR cache directory."""
+    try:
+        model_dir = os.path.expanduser("~/.EasyOCR/model")
+        if os.path.exists(model_dir):
+            for fname in os.listdir(model_dir):
+                fpath = os.path.join(model_dir, fname)
+                if os.path.isfile(fpath) and (fname.endswith(".pth") or fname.endswith(".tmp")):
+                    try:
+                        os.remove(fpath)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+
 def _get_reader() -> easyocr.Reader:
     global _reader
     if _reader is None:
-        _reader = easyocr.Reader(["en"], gpu=False)
+        try:
+            _reader = easyocr.Reader(["en"], gpu=False)
+        except (AssertionError, Exception):
+            _clean_corrupt_easyocr_models()
+            _reader = easyocr.Reader(["en"], gpu=False)
     return _reader
 
 

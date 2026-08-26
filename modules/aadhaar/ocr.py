@@ -10,6 +10,7 @@ Extracts:
   - Address
 """
 
+import os
 import re
 from typing import Optional
 
@@ -20,11 +21,35 @@ from PIL import Image
 _reader: Optional[easyocr.Reader] = None
 
 
+def _clean_corrupt_easyocr_models():
+    """Remove partial or corrupted model files from EasyOCR cache directory."""
+    try:
+        model_dir = os.path.expanduser("~/.EasyOCR/model")
+        if os.path.exists(model_dir):
+            for fname in os.listdir(model_dir):
+                fpath = os.path.join(model_dir, fname)
+                if os.path.isfile(fpath) and (fname.endswith(".pth") or fname.endswith(".tmp")):
+                    try:
+                        os.remove(fpath)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+
 def _get_reader() -> easyocr.Reader:
-    """Lazy-init EasyOCR reader (supports English + Hindi)."""
+    """Lazy-init EasyOCR reader with robust fallback and corrupted cache recovery."""
     global _reader
     if _reader is None:
-        _reader = easyocr.Reader(["en", "hi"], gpu=False)
+        try:
+            _reader = easyocr.Reader(["en", "hi"], gpu=False)
+        except (AssertionError, Exception):
+            _clean_corrupt_easyocr_models()
+            try:
+                _reader = easyocr.Reader(["en"], gpu=False)
+            except (AssertionError, Exception):
+                _clean_corrupt_easyocr_models()
+                _reader = easyocr.Reader(["en"], gpu=False)
     return _reader
 
 

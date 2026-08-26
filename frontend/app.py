@@ -428,9 +428,9 @@ def _screen_passport(bio_img: np.ndarray, extra_img: Optional[np.ndarray]) -> di
     # Parse MRZ lines from bottom of biographical page
     h = bio_img.shape[0]
     mrz_strip = bio_img[int(h * 0.80) :, :]
-    import easyocr
+    from modules.passport.viz import _get_reader
 
-    reader = easyocr.Reader(["en"], gpu=False)
+    reader = _get_reader()
     mrz_res = reader.readtext(mrz_strip, detail=0)
     mrz_lines = [
         r.replace(" ", "").upper() for r in mrz_res if len(r.replace(" ", "")) >= 40
@@ -527,9 +527,9 @@ def _screen_visa(visa_img: np.ndarray, passport_img: np.ndarray) -> dict:
     # Parse MRZ from passport page to bind automatically
     h = passport_img.shape[0]
     mrz_strip = passport_img[int(h * 0.80) :, :]
-    import easyocr
+    from modules.passport.viz import _get_reader
 
-    reader = easyocr.Reader(["en"], gpu=False)
+    reader = _get_reader()
     mrz_res = reader.readtext(mrz_strip, detail=0)
     mrz_lines = [
         r.replace(" ", "").upper() for r in mrz_res if len(r.replace(" ", "")) >= 40
