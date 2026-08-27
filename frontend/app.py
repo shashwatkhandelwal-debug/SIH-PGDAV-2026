@@ -526,102 +526,117 @@ def _screen_generic_id(id_img: np.ndarray) -> dict:
 
 def _run_screening(doc_type: str, inputs: dict, live_face_img=None) -> dict:
     t_start = time.time()
-    from shared.quality_check import check_quality
-
-    # Validate image quality for primary inputs
-    primary_key = (
-        "front" if doc_type == "AADHAAR"
-        else ("bio" if doc_type == "PASSPORT"
-        else ("visa" if doc_type == "VISA"
-        else ("dl" if doc_type == "DRIVING LICENCE"
-        else ("permit" if doc_type == "BORDER PERMIT" else "generic_id"))))
-    )
-    primary_img = inputs.get(primary_key)
-
-    if primary_img is not None:
-        quality = check_quality(primary_img)
-        if not quality["acceptable"]:
-            return {
-                "error": "Primary document scan quality is insufficient",
-                "issues": quality["issues"],
-                "score_result": {
-                    "overall_score": 100.0,
-                    "status": "FLAGGED",
-                    "failed_checks": [],
-                    "component_breakdown": {},
-                },
-                "elapsed_sec": time.time() - t_start,
-            }
-
-    check_results = {}
-
-    if doc_type == "AADHAAR":
-        check_results = _screen_aadhaar(inputs["front"], inputs["back"])
-    elif doc_type == "PASSPORT":
-        check_results = _screen_passport(inputs["bio"], inputs.get("extra"))
-    elif doc_type == "VISA":
-        check_results = _screen_visa(inputs["visa"], inputs["passport"])
-    elif doc_type == "DRIVING LICENCE":
-        check_results = _screen_dl(inputs["dl"])
-    elif doc_type == "BORDER PERMIT":
-        check_results = _screen_permit(inputs["permit"], inputs.get("id_str"))
-    elif doc_type == "GENERIC NATIONAL ID":
-        check_results = _screen_generic_id(inputs["generic_id"])
-
-    # Face match (if live face capture provided)
-    if live_face_img is not None:
-        from modules.face.embedder import get_embedding
-        from modules.face.identity_graph import search_and_store
-        from modules.face.match import match_face_to_document
-
-        doc_face_img = primary_img
-        face_result = match_face_to_document(doc_face_img, live_face_img, doc_type)
-        check_results["face_match"] = face_result
-        check_results["liveness"] = face_result.get("liveness", {"score": 0.0})
-
-        live_emb = get_embedding(live_face_img)
-        if live_emb is not None:
-            doc_number = check_results.get("_meta", {}).get("doc_number") or ""
-            name = check_results.get("_meta", {}).get("name") or ""
-            graph_res = search_and_store(live_emb, name, doc_number, doc_type)
-            check_results["identity_graph"] = graph_res
-
-    # Scorer
-    from modules.decision.scorer import compute_score
-    score_result = compute_score(check_results, doc_type=doc_type)
-
-    # LLM summary
-    from modules.decision.llm_summary import generate_summary
-    summary = generate_summary(check_results, score_result)
-
-    t_elapsed = time.time() - t_start
-
-    # Log to audit database
     try:
-        from shared.audit import log_screening
-        meta = check_results.get("_meta", {})
-        log_screening(
-            doc_type=doc_type,
-            doc_number=meta.get("doc_number", ""),
-            name=meta.get("name", ""),
-            risk_level=score_result.get("status", "CLEAR"),
-            total_score=score_result.get("overall_score", 0.0),
-            failed_checks=score_result.get("failed_checks", []),
-            checkpoint_id="CHECKPOINT_NORTH_01",
-            officer_id="SSB_OFFICER_DEMO",
-            summary=summary,
-        )
-    except Exception:
-        pass
+        from shared.quality_check import check_quality
 
-    return {
-        "doc_type": doc_type,
-        "check_results": check_results,
-        "score_result": score_result,
-        "summary": summary,
-        "elapsed_sec": t_elapsed,
-        "error": None,
-    }
+        # Validate image quality for primary inputs
+        primary_key = (
+            "front" if doc_type == "AADHAAR"
+            else ("bio" if doc_type == "PASSPORT"
+            else ("visa" if doc_type == "VISA"
+            else ("dl" if doc_type == "DRIVING LICENCE"
+            else ("permit" if doc_type == "BORDER PERMIT" else "generic_id"))))
+        )
+        primary_img = inputs.get(primary_key)
+
+        if primary_img is not None:
+            quality = check_quality(primary_img)
+            if not quality["acceptable"]:
+                return {
+                    "error": "Primary document scan quality is insufficient",
+                    "issues": quality["issues"],
+                    "score_result": {
+                        "overall_score": 100.0,
+                        "status": "FLAGGED",
+                        "failed_checks": [],
+                        "component_breakdown": {},
+                    },
+                    "elapsed_sec": time.time() - t_start,
+                }
+
+        check_results = {}
+
+        if doc_type == "AADHAAR":
+            check_results = _screen_aadhaar(inputs["front"], inputs["back"])
+        elif doc_type == "PASSPORT":
+            check_results = _screen_passport(inputs["bio"], inputs.get("extra"))
+        elif doc_type == "VISA":
+            check_results = _screen_visa(inputs["visa"], inputs["passport"])
+        elif doc_type == "DRIVING LICENCE":
+            check_results = _screen_dl(inputs["dl"])
+        elif doc_type == "BORDER PERMIT":
+            check_results = _screen_permit(inputs["permit"], inputs.get("id_str"))
+        elif doc_type == "GENERIC NATIONAL ID":
+            check_results = _screen_generic_id(inputs["generic_id"])
+
+        # Face match (if live face capture provided)
+        if live_face_img is not None:
+            from modules.face.embedder import get_embedding
+            from modules.face.identity_graph import search_and_store
+            from modules.face.match import match_face_to_document
+
+            doc_face_img = primary_img
+            face_result = match_face_to_document(doc_face_img, live_face_img, doc_type)
+            check_results["face_match"] = face_result
+            check_results["liveness"] = face_result.get("liveness", {"score": 0.0})
+
+            live_emb = get_embedding(live_face_img)
+            if live_emb is not None:
+                doc_number = check_results.get("_meta", {}).get("doc_number") or ""
+                name = check_results.get("_meta", {}).get("name") or ""
+                graph_res = search_and_store(live_emb, name, doc_number, doc_type)
+                check_results["identity_graph"] = graph_res
+
+        # Scorer
+        from modules.decision.scorer import compute_score
+        score_result = compute_score(check_results, doc_type=doc_type)
+
+        # LLM summary
+        from modules.decision.llm_summary import generate_summary
+        summary = generate_summary(check_results, score_result)
+
+        t_elapsed = time.time() - t_start
+
+        # Log to audit database
+        try:
+            from shared.audit import log_screening
+            meta = check_results.get("_meta", {})
+            log_screening(
+                doc_type=doc_type,
+                doc_number=meta.get("doc_number", ""),
+                name=meta.get("name", ""),
+                risk_level=score_result.get("status", "CLEAR"),
+                total_score=score_result.get("overall_score", 0.0),
+                failed_checks=score_result.get("failed_checks", []),
+                checkpoint_id="CHECKPOINT_NORTH_01",
+                officer_id="SSB_OFFICER_DEMO",
+                summary=summary,
+            )
+        except Exception:
+            pass
+
+        return {
+            "doc_type": doc_type,
+            "check_results": check_results,
+            "score_result": score_result,
+            "summary": summary,
+            "elapsed_sec": t_elapsed,
+            "error": None,
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "error": f"Screening issue: {e}",
+            "issues": [str(e)],
+            "score_result": {
+                "overall_score": 0.0,
+                "status": "CLEAR",
+                "failed_checks": [],
+                "component_breakdown": {},
+            },
+            "summary": "Manual inspection recommended.",
+            "elapsed_sec": time.time() - t_start,
+        }
 
 
 def _display_results(results: dict):
