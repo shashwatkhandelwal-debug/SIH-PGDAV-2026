@@ -2,27 +2,39 @@
 Aadhaar Secure QR Decoder.
 
 Handles both:
-  - New binary format (post-2017): packed byte array with length-prefixed fields
+  - New Secure QR (post-2017): base-10 integer → bytes → gzip → 0xFF-delimited fields
   - Old XML format (pre-2017): plain XML string
 
-The QR payload structure (new format):
-  [email_mobile_flag: 1B][ref_id: 8B][name: LP][dob: 10B][gender: 1B]
-  [care_of: LP][district: LP][landmark: LP][house: LP][location: LP]
-  [pincode: 6B][postoffice: LP][state: LP][street: LP][subdistrict: LP]
-  [vtc: LP][mobile_last4: 4B if flag set][photo: LP if flag set]
-  [signature: 256B]  ← last 256 bytes always
-
-LP = length-prefixed UTF-8 string (2-byte big-endian length header)
+UIDAI Secure QR pipeline (User Manual for QR Code):
+  1. Decode QR (PyZBar) → large base-10 digit string
+  2. int(digits).to_bytes(...) → compressed byte array
+  3. gzip / zlib decompress
+  4. Split signature (last 256 bytes) from signed data
+  5. Parse 0xFF-delimited fields: flag, name, DOB, gender, address…, photo
 """
 
+import gzip
+import logging
 import struct
 import xml.etree.ElementTree as ET
-from typing import Optional, Tuple
+import zlib
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
 from PIL import Image
-from pyzbar.pyzbar import decode as pyzbar_decode
+
+logger = logging.getLogger(__name__)
+
+
+def _pyzbar_decode(pil_img):
+    """Lazy import so Secure QR parse helpers work without system libzbar in unit tests."""
+    from pyzbar.pyzbar import decode as pyzbar_decode
+
+    return pyzbar_decode(pil_img)
+
+_DELIMITER = 0xFF
+_SIGNATURE_LEN = 256
 
 
 def _detect_and_decode_qr(
@@ -38,8 +50,14 @@ def _detect_and_decode_qr(
 
     def try_pyzbar(img_arr):
         try:
-            pil_img = Image.fromarray(img_arr)
-            objs = pyzbar_decode(pil_img)
+            if isinstance(img_arr, np.ndarray) and len(img_arr.shape) == 2:
+                pil_img = Image.fromarray(img_arr)
+            elif isinstance(img_arr, np.ndarray) and img_arr.shape[2] == 3:
+                # OpenCV BGR → RGB for PIL
+                pil_img = Image.fromarray(cv2.cvtColor(img_arr, cv2.COLOR_BGR2RGB))
+            else:
+                pil_img = Image.fromarray(img_arr)
+            objs = _pyzbar_decode(pil_img)
             for obj in objs:
                 if obj.type == "QRCODE" and obj.data:
                     r = obj.rect
@@ -49,23 +67,19 @@ def _detect_and_decode_qr(
             pass
         return None, None
 
-    # Pass 1: Raw image
     data, reg = try_pyzbar(image)
     if data:
         return data, reg
 
-    # Convert to grayscale if 3-channel
     if len(image.shape) == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     else:
         gray = image
 
-    # Pass 2: Grayscale
     data, reg = try_pyzbar(gray)
     if data:
         return data, reg
 
-    # Pass 3: CLAHE contrast enhancement
     try:
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(gray)
@@ -75,7 +89,6 @@ def _detect_and_decode_qr(
     except Exception:
         pass
 
-    # Pass 4: Otsu thresholding
     try:
         _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
         data, reg = try_pyzbar(otsu)
@@ -84,7 +97,6 @@ def _detect_and_decode_qr(
     except Exception:
         pass
 
-    # Pass 5: Adaptive thresholding
     try:
         adaptive = cv2.adaptiveThreshold(
             gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 51, 11
@@ -95,7 +107,22 @@ def _detect_and_decode_qr(
     except Exception:
         pass
 
-    # Pass 6: cv2.QRCodeDetector fallback
+    # Upscale small QR regions for mobile captures
+    try:
+        h, w = gray.shape[:2]
+        if max(h, w) < 1200:
+            scale = 1200 / float(max(h, w))
+            up = cv2.resize(
+                gray,
+                (int(w * scale), int(h * scale)),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            data, reg = try_pyzbar(up)
+            if data:
+                return data, reg
+    except Exception:
+        pass
+
     try:
         detector = cv2.QRCodeDetector()
         val, points, _ = detector.detectAndDecode(gray)
@@ -118,33 +145,56 @@ def decode_aadhaar_qr(image: np.ndarray) -> dict:
     Detect and decode the Aadhaar Secure QR from a card image.
 
     Returns:
-        dict with keys: format ('xml'|'binary'), fields (dict), raw_payload (bytes),
-        signature (bytes), error (str|None)
+        dict with keys: format ('xml'|'secure'), fields (dict), raw_payload (bytes),
+        signature (bytes), error (str|None), region
     """
-    print("[DEBUG QR Decoder] Starting QR detection across multi-pass pipeline...")
+    logger.debug("Starting QR detection across multi-pass pipeline...")
     qr_data, region = _detect_and_decode_qr(image)
 
     if qr_data is None:
-        print("[DEBUG QR Decoder] RESULT: No QR code detected (Decoder returned None / empty result).")
-        return {"error": "No QR code detected", "fields": {}, "region": None}
+        logger.debug("No QR code detected")
+        return {
+            "error": "no_qr_detected",
+            "fields": {},
+            "region": None,
+            "format": None,
+            "raw_payload": None,
+            "signature": None,
+        }
 
     payload_len = len(qr_data)
-    print(f"[DEBUG QR Decoder] RESULT: QR successfully detected & decoded! Raw payload length: {payload_len} bytes.")
+    logger.debug("QR detected, raw payload length: %s bytes", payload_len)
 
-    # Detect format
-    res = None
+    # XML (pre-2017) if UTF-8 and starts with '<'
     try:
         text = qr_data.decode("utf-8")
         if text.strip().startswith("<"):
-            print("[DEBUG QR Decoder] Detected format: XML format (pre-2017)")
+            logger.debug("Detected format: XML (pre-2017)")
             res = _parse_xml_format(text, qr_data)
+            res["region"] = region
+            return res
+        # Secure QR is a large decimal string
+        if text.strip().isdigit() and len(text.strip()) > 50:
+            logger.debug("Detected format: Secure QR (base-10 integer)")
+            res = _parse_secure_qr_decimal(text.strip())
+            res["region"] = region
+            return res
     except UnicodeDecodeError:
-        pass  # Binary format
+        pass
 
-    if res is None:
-        print("[DEBUG QR Decoder] Detected format: Binary format (Secure QR post-2017)")
-        res = _parse_binary_format(qr_data)
+    # Raw bytes that are actually ASCII digits
+    try:
+        as_text = qr_data.decode("ascii")
+        if as_text.strip().isdigit() and len(as_text.strip()) > 50:
+            res = _parse_secure_qr_decimal(as_text.strip())
+            res["region"] = region
+            return res
+    except Exception:
+        pass
 
+    # Already-decompressed or non-digit binary — try gzip then delimiter parse
+    logger.debug("Attempting secure QR parse on raw bytes")
+    res = _parse_secure_qr_bytes(qr_data)
     res["region"] = region
     return res
 
@@ -173,93 +223,215 @@ def _parse_xml_format(text: str, raw: bytes) -> dict:
             "pc": root.get("pc", ""),
             "po": root.get("po", ""),
         }
-        # Signature is appended after the XML, last 256 bytes
-        signature = raw[-256:]
-        payload = raw[:-256]
+        signature = raw[-_SIGNATURE_LEN:] if len(raw) > _SIGNATURE_LEN else b""
+        payload = raw[:-_SIGNATURE_LEN] if len(raw) > _SIGNATURE_LEN else raw
         return {
             "format": "xml",
             "fields": fields,
             "raw_payload": payload,
-            "signature": signature,
+            "signature": signature if len(signature) == _SIGNATURE_LEN else None,
             "error": None,
         }
     except ET.ParseError as e:
-        return {"format": "xml", "fields": {}, "error": str(e)}
-
-
-# ── Binary format (post-2017) ──────────────────────────────────────────────────
-
-
-def _parse_binary_format(data: bytes) -> dict:
-    """Parse new-format Aadhaar QR (packed binary payload)."""
-    try:
-        signature = data[-256:]
-        payload = data[:-256]
-
-        offset = 0
-        email_mobile_flag = data[offset]
-        offset += 1
-        ref_id = data[offset : offset + 8].decode("ascii", errors="replace")
-        offset += 8
-
-        name, offset = _read_lp_string(data, offset)
-        dob = data[offset : offset + 10].decode("ascii", errors="replace")
-        offset += 10
-        gender_byte = data[offset]
-        offset += 1
-        gender = {1: "M", 2: "F", 3: "T"}.get(gender_byte, "U")
-
-        care_of, offset = _read_lp_string(data, offset)
-        district, offset = _read_lp_string(data, offset)
-        landmark, offset = _read_lp_string(data, offset)
-        house, offset = _read_lp_string(data, offset)
-        location, offset = _read_lp_string(data, offset)
-        pincode = data[offset : offset + 6].decode("ascii", errors="replace")
-        offset += 6
-        postoffice, offset = _read_lp_string(data, offset)
-        state, offset = _read_lp_string(data, offset)
-        street, offset = _read_lp_string(data, offset)
-        subdistrict, offset = _read_lp_string(data, offset)
-        vtc, offset = _read_lp_string(data, offset)
-
-        mobile_last4 = None
-        if email_mobile_flag in (1, 3):
-            mobile_last4 = data[offset : offset + 4].decode("ascii", errors="replace")
-            offset += 4
-
-        fields = {
-            "ref_id": ref_id,
-            "name": name,
-            "dob": dob,
-            "gender": gender,
-            "care_of": care_of,
-            "district": district,
-            "landmark": landmark,
-            "house": house,
-            "location": location,
-            "pincode": pincode,
-            "postoffice": postoffice,
-            "state": state,
-            "street": street,
-            "subdistrict": subdistrict,
-            "vtc": vtc,
-            "mobile_last4": mobile_last4,
+        return {
+            "format": "xml",
+            "fields": {},
+            "raw_payload": None,
+            "signature": None,
+            "error": f"secure_qr_parse_failed: XML parse error: {e}",
         }
 
+
+# ── Secure QR (post-2017) ──────────────────────────────────────────────────────
+
+
+def _parse_secure_qr_decimal(decimal_str: str) -> dict:
+    """Convert base-10 Secure QR string → bytes → gzip → fields."""
+    try:
+        value = int(decimal_str)
+        # Minimum byte length so that to_bytes does not raise
+        byte_len = (value.bit_length() + 7) // 8
+        if byte_len < 1:
+            return _secure_parse_error("empty integer payload")
+        compressed = value.to_bytes(byte_len, byteorder="big")
+        return _parse_secure_qr_bytes(compressed)
+    except Exception as e:
+        return _secure_parse_error(f"decimal conversion failed: {e}")
+
+
+def _decompress_secure_payload(data: bytes) -> bytes:
+    """Gzip/zlib decompress Secure QR compressed bytes."""
+    # Try gzip module first
+    try:
+        return gzip.decompress(data)
+    except Exception:
+        pass
+    # zlib with gzip header (wbits=16+MAX_WBITS)
+    try:
+        return zlib.decompress(data, wbits=16 + zlib.MAX_WBITS)
+    except Exception:
+        pass
+    # Raw zlib
+    try:
+        return zlib.decompress(data)
+    except Exception:
+        pass
+    # Some scanners leave a leading null / padding byte
+    if len(data) > 2 and data[0] == 0x00:
+        return _decompress_secure_payload(data[1:])
+    raise ValueError("gzip/zlib decompression failed")
+
+
+def _parse_secure_qr_bytes(data: bytes) -> dict:
+    """Decompress (if needed) and parse 0xFF-delimited Secure QR fields."""
+    try:
+        # Detect gzip magic 1f 8b, else try decompress anyway for Secure QR
+        if len(data) >= 2 and data[0] == 0x1F and data[1] == 0x8B:
+            decompressed = _decompress_secure_payload(data)
+        else:
+            try:
+                decompressed = _decompress_secure_payload(data)
+            except Exception:
+                # Already decompressed delimiter payload
+                decompressed = data
+
+        if len(decompressed) <= _SIGNATURE_LEN:
+            return _secure_parse_error(
+                f"decompressed payload too short ({len(decompressed)} bytes)"
+            )
+
+        signature = decompressed[-_SIGNATURE_LEN:]
+        signed_data = decompressed[:-_SIGNATURE_LEN]
+        fields = _parse_delimiter_fields(signed_data)
+
         return {
-            "format": "binary",
+            "format": "secure",
             "fields": fields,
-            "raw_payload": payload,
+            "raw_payload": signed_data,
             "signature": signature,
             "error": None,
         }
-
     except Exception as e:
-        return {"format": "binary", "fields": {}, "error": f"Parse error: {e}"}
+        return _secure_parse_error(str(e))
 
 
-def _read_lp_string(data: bytes, offset: int) -> tuple[str, int]:
-    """Read a 2-byte big-endian length-prefixed UTF-8 string."""
+def _secure_parse_error(msg: str) -> dict:
+    return {
+        "format": "secure",
+        "fields": {},
+        "raw_payload": None,
+        "signature": None,
+        "error": f"secure_qr_parse_failed: {msg}",
+    }
+
+
+def _split_delimiter_fields(data: bytes) -> List[bytes]:
+    """Split signed data on 0xFF delimiters."""
+    parts: List[bytes] = []
+    start = 0
+    for i, b in enumerate(data):
+        if b == _DELIMITER:
+            parts.append(data[start:i])
+            start = i + 1
+    if start <= len(data):
+        parts.append(data[start:])
+    # Drop empty trailing chunk if present
+    while parts and parts[-1] == b"":
+        parts.pop()
+    return parts
+
+
+def _decode_iso(chunk: bytes) -> str:
+    return chunk.decode("iso-8859-1", errors="replace").strip("\x00").strip()
+
+
+def _parse_delimiter_fields(signed_data: bytes) -> dict:
+    """
+    Parse UIDAI Secure QR fields from 0xFF-delimited signed data.
+
+    Field order after email/mobile presence indicator:
+      name, dob, gender, care_of, district, landmark, house, location,
+      pincode, postoffice, state, street, subdistrict, vtc,
+      [photo bytes...], [mobile hash 32B], [email hash 32B] before signature
+      (hashes are already excluded because we sliced signature off signed_data;
+       photo + optional email/mobile hashes may remain after VTC).
+    """
+    parts = _split_delimiter_fields(signed_data)
+    if not parts:
+        return {}
+
+    # First field: email/mobile present bit indicator (0-3)
+    flag_raw = _decode_iso(parts[0]) if parts else "0"
+    try:
+        email_mobile_flag = int(flag_raw) if flag_raw.isdigit() else (parts[0][0] if parts[0] else 0)
+    except Exception:
+        email_mobile_flag = 0
+
+    def get(i: int) -> str:
+        if i < len(parts):
+            return _decode_iso(parts[i])
+        return ""
+
+    # Indices 1..14 are text demographics
+    name = get(1)
+    dob = get(2)
+    gender = get(3)
+    care_of = get(4)
+    district = get(5)
+    landmark = get(6)
+    house = get(7)
+    location = get(8)
+    pincode = get(9)
+    postoffice = get(10)
+    state = get(11)
+    street = get(12)
+    subdistrict = get(13)
+    vtc = get(14)
+
+    # Normalize gender to single letter / word
+    g = gender.upper()[:1] if gender else ""
+    gender_norm = {"M": "M", "F": "F", "T": "T"}.get(g, gender)
+
+    # Photo is typically remaining bytes after VTC delimiter until email/mobile hashes
+    photo = None
+    if len(parts) > 15:
+        photo_bytes = parts[15]
+        # Email/mobile SHA256 hashes are 32 bytes each at the end of signed_data
+        # When they are separate delimiter fields they appear after photo
+        if len(photo_bytes) > 100:
+            photo = photo_bytes
+
+    # ref_id / last4 often encoded in first bytes of some versions — leave optional
+    fields = {
+        "email_mobile_flag": email_mobile_flag,
+        "name": name,
+        "dob": dob,
+        "gender": gender_norm,
+        "care_of": care_of,
+        "district": district,
+        "landmark": landmark,
+        "house": house,
+        "location": location,
+        "pincode": pincode,
+        "postoffice": postoffice,
+        "state": state,
+        "street": street,
+        "subdistrict": subdistrict,
+        "vtc": vtc,
+        "uid_last4": "",  # Secure QR does not contain full UID
+        "has_photo": bool(photo),
+    }
+    return fields
+
+
+# Backwards-compatible alias used by older call sites / tests
+def _parse_binary_format(data: bytes) -> dict:
+    """Deprecated alias — routes to Secure QR parser."""
+    return _parse_secure_qr_bytes(data)
+
+
+def _read_lp_string(data: bytes, offset: int) -> tuple:
+    """Legacy helper retained for tests; reads 2-byte BE length-prefixed UTF-8."""
     length = struct.unpack_from(">H", data, offset)[0]
     offset += 2
     text = data[offset : offset + length].decode("utf-8", errors="replace")

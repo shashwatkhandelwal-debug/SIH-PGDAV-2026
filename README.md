@@ -55,8 +55,11 @@ cd SIH-PGDAV-2026
 python -m venv venv
 venv\Scripts\activate        # Windows
 pip install -r requirements.txt
+python -m spacy download en_core_web_sm   # required for Aadhaar name NER
 streamlit run frontend/app.py
 ```
+
+**Aadhaar OCR:** OpenBharatOCR is primary; EasyOCR + spaCy NER is the fallback if OpenBharatOCR is unavailable. On Windows, install the ZBar DLL for PyZBar (`libzbar`); on Linux/Streamlit Cloud, `libzbar0` is listed in `packages.txt`.
 
 ## Deliberate Scope Boundaries
 

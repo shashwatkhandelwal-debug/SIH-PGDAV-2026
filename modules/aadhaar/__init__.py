@@ -1,8 +1,8 @@
 """
 Aadhaar Module
 --------------
-ocr.py          - Extract printed fields via EasyOCR
-qr.py           - Decode Secure QR, parse binary payload
+ocr.py          - Extract printed fields via OpenBharatOCR (EasyOCR + spaCy fallback)
+qr.py           - Decode Secure QR (PyZBar → big-int → gzip → 0xFF fields)
 verhoeff.py     - Verhoeff checksum validation (dihedral group D5)
 signature.py    - UIDAI RSA-2048 QR signature verification
 consistency.py  - QR fields vs OCR printed fields cross-check

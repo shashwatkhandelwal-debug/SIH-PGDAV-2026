@@ -128,6 +128,7 @@ def _rule_based_summary(check_results: dict, score_result: dict) -> str:
         score_result.get("overall_score")
         or score_result.get("total_score", 0.0)
     )
+    verification_tier = check_results.get("verification_tier")
 
     face_match = check_results.get("face_match")
     face_mismatched = bool(
@@ -149,10 +150,25 @@ def _rule_based_summary(check_results: dict, score_result: dict) -> str:
     if sig_check.get("valid") is None and "aadhaar_uidai_signature" in failed:
         failed.remove("aadhaar_uidai_signature")
 
+    # QR unavailable is not a printed-vs-QR mismatch — never use that message
+    consistency = check_results.get("aadhaar_qr_ocr_consistency") or {}
+    if (
+        verification_tier == "QR_UNREADABLE"
+        or consistency.get("error") == "qr_data_unavailable"
+        or consistency.get("consistent") is None
+    ):
+        if "aadhaar_qr_ocr_consistency" in failed:
+            failed.remove("aadhaar_qr_ocr_consistency")
+
+    # QR_UNREADABLE: always prefer recapture / secondary inspection wording
+    if verification_tier == "QR_UNREADABLE":
+        return (
+            "Format and physical checks available, but QR unreadable: "
+            "recommend camera recapture or secondary manual verification."
+        )
+
     # If all checks passed and face matched
     if status == "CLEAR" and not face_mismatched and not failed:
-        if check_results.get("verification_tier") == "QR_UNREADABLE":
-            return "Format and physical checks passed, but QR unreadable: recommend camera recapture or secondary manual verification."
         return "All checks passed: document appears genuine and traveler face matched, proceed normally."
 
     # If document passed but face mismatched

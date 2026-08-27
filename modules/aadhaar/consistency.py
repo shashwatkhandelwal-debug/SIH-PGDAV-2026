@@ -7,6 +7,8 @@ a genuine signed QR is applied to a fake card with different printed text.
 
 A genuine UIDAI signature on the QR does NOT mean the printed fields match.
 This check is the second line of defense after signature verification.
+
+Missing fields (match is None) are treated as uncertain — not mismatches.
 """
 
 from typing import Optional
@@ -27,28 +29,47 @@ def check_qr_ocr_consistency(qr_fields: dict, ocr_fields: dict) -> dict:
 
     Returns:
         dict with keys:
-          consistent (bool), mismatches (list[str]), details (dict)
+          consistent (bool|None), mismatches (list[str]), details (dict)
+          consistent is None when no comparable fields are available.
     """
     mismatches = []
     details = {}
+    compared = 0
 
-    # 1. Name match (fuzzy  -  OCR errors expected)
+    # 1. Name match (fuzzy — OCR errors expected)
     name_result = _compare_name(qr_fields.get("name"), ocr_fields.get("name_en"))
     details["name"] = name_result
-    if not name_result["match"]:
+    if name_result["match"] is True:
+        compared += 1
+    elif name_result["match"] is False:
+        compared += 1
         mismatches.append("name")
 
     # 2. Date of Birth (normalized exact match)
     dob_result = _compare_dob(qr_fields.get("dob"), ocr_fields.get("dob"))
     details["dob"] = dob_result
-    if not dob_result["match"]:
+    if dob_result["match"] is True:
+        compared += 1
+    elif dob_result["match"] is False:
+        compared += 1
         mismatches.append("dob")
 
     # 3. Gender (exact)
     gender_result = _compare_gender(qr_fields.get("gender"), ocr_fields.get("gender"))
     details["gender"] = gender_result
-    if not gender_result["match"]:
+    if gender_result["match"] is True:
+        compared += 1
+    elif gender_result["match"] is False:
+        compared += 1
         mismatches.append("gender")
+
+    if compared == 0:
+        return {
+            "consistent": None,
+            "mismatches": [],
+            "details": details,
+            "error": "insufficient_fields_for_comparison",
+        }
 
     return {
         "consistent": len(mismatches) == 0,
@@ -84,7 +105,7 @@ def _compare_dob(qr_dob: Optional[str], ocr_dob: Optional[str]) -> dict:
 
     qr_norm = _normalize_date(qr_dob)
     ocr_norm = _normalize_date(ocr_dob)
-    match = qr_norm == ocr_norm
+    match = qr_norm == ocr_norm and len(qr_norm) >= 4
 
     return {"match": match, "qr_value": qr_dob, "ocr_value": ocr_dob}
 
@@ -106,10 +127,14 @@ def _normalize_name(name: str) -> str:
 
 
 def _normalize_date(date_str: str) -> str:
-    """Normalize DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD to DDMMYYYY."""
+    """Normalize DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD to digit form."""
     import re
 
     digits = re.sub(r"\D", "", date_str)
     if len(digits) == 8:
-        return digits  # Already DDMMYYYY or YYYYMMDD  -  further parsing if needed
+        # Prefer DDMMYYYY if day looks plausible; also accept YYYYMMDD
+        dd_first = int(digits[0:2])
+        if 1 <= dd_first <= 31:
+            return digits  # DDMMYYYY
+        return digits[6:8] + digits[4:6] + digits[0:4]  # YYYYMMDD → DDMMYYYY
     return digits

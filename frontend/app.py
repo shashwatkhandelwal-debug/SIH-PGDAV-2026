@@ -242,23 +242,31 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
 
         # 3. Front OCR vs QR cross-check
         consistency = check_qr_ocr_consistency(qr.get("fields", {}), ocr)
+        cons_flag = consistency.get("consistent")
+        if cons_flag is True:
+            cons_score = 1.0
+        elif cons_flag is False:
+            cons_score = 0.0
+        else:
+            cons_score = None  # uncertain / insufficient fields
         results["aadhaar_qr_ocr_consistency"] = {
-            "score": 1.0 if consistency.get("consistent") else 0.0,
+            "score": cons_score,
             **consistency,
         }
     else:
         verification_tier = "QR_UNREADABLE"
         results["aadhaar_uidai_signature"] = {
-            "score": 0.0,
+            "score": None,
             "valid": None,
             "error": "QR code unreadable due to capture quality (glare, blur, or missing)",
             "verification_tier": "QR_UNREADABLE",
         }
+        # Not a content mismatch — QR evidence unavailable
         results["aadhaar_qr_ocr_consistency"] = {
-            "score": 0.0,
-            "consistent": False,
-            "mismatches": ["qr_data_unavailable"],
-            "error": "QR code unreadable",
+            "score": None,
+            "consistent": None,
+            "mismatches": [],
+            "error": "qr_data_unavailable",
         }
 
     results["verification_tier"] = verification_tier

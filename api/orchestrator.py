@@ -230,28 +230,34 @@ async def _run_aadhaar_checks(image: np.ndarray) -> tuple[dict, list]:
         cons = await _safe_run(
             check_qr_ocr_consistency, qr.get("fields", {}), ocr or {}
         )
-        is_consistent = bool(cons and cons.get("consistent"))
+        cons_flag = cons.get("consistent") if isinstance(cons, dict) else None
+        if cons_flag is True:
+            cons_score = 1.0
+        elif cons_flag is False:
+            cons_score = 0.0
+        else:
+            cons_score = None
         results["aadhaar_qr_ocr_consistency"] = {
-            "score": 1.0 if is_consistent else 0.0,
+            "score": cons_score,
             **(cons or {}),
         }
-        if not is_consistent:
+        if cons_flag is False:
             notes.append(
                 f"Aadhaar QR-OCR consistency check failed: {cons.get('mismatches') if isinstance(cons, dict) else 'Demographics mismatch'}."
             )
     else:
         verification_tier = "QR_UNREADABLE"
         results["aadhaar_uidai_signature"] = {
-            "score": 0.0,
+            "score": None,
             "valid": None,
             "error": "QR code unreadable due to capture quality (glare, blur, or missing)",
             "verification_tier": "QR_UNREADABLE",
         }
         results["aadhaar_qr_ocr_consistency"] = {
-            "score": 0.0,
-            "consistent": False,
-            "mismatches": ["qr_data_unavailable"],
-            "error": "QR code unreadable",
+            "score": None,
+            "consistent": None,
+            "mismatches": [],
+            "error": "qr_data_unavailable",
         }
         notes.append(
             "Capture alert: QR code unreadable due to glare or blur. Recapture back of card under clear lighting for cryptographic verification."
