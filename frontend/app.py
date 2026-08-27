@@ -245,14 +245,17 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
     ela_front = run_ela(front_img)
     ela_back = run_ela(back_img)
 
-    suspicious = ela_front["suspicious"] or ela_back["suspicious"]
-    mean_diff = max(ela_front["mean_diff"], ela_back["mean_diff"])
+    suspicious = bool(ela_front.get("suspicious") or ela_back.get("suspicious"))
+    mean_var = max(
+        float(ela_front.get("mean_variance", 0.0)),
+        float(ela_back.get("mean_variance", 0.0)),
+    )
 
     results["ela_full_document"] = {
         "score": 0.0 if suspicious else 1.0,
-        "mean_diff": mean_diff,
+        "mean_variance": mean_var,
         "suspicious": suspicious,
-        "heatmap": ela_front["heatmap"],  # Return front heatmap as display sample
+        "heatmap": ela_front.get("heatmap"),  # Return front heatmap as display sample
     }
 
     if qr_region:
