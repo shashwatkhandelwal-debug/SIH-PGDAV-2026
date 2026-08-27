@@ -131,14 +131,24 @@ st.markdown(
 def _render_image_input(
     label: str, key_suffix: str, scan_type: str = "doc"
 ) -> Optional[np.ndarray]:
-    """Helper to render camera input and file upload options."""
-    c1, c2 = st.columns([1, 1])
-    with c1:
+    """Helper to render native camera snap or in-browser video feed."""
+    up_file = st.file_uploader(
+        f"📸 Tap to Snap {label} (Native Phone Camera)",
+        type=["jpg", "jpeg", "png"],
+        key=f"up_{key_suffix}",
+        help="On mobile, tapping this directly launches your phone's native camera with laser autofocus.",
+    )
+    up_img = None
+    if up_file:
+        pil_img = Image.open(up_file)
+        up_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+
+    with st.expander(f"🖥️ Or Use In-Browser Live Webcam ({label})", expanded=False):
         cam_key = f"cam_{key_suffix}"
         st_key = f"start_{key_suffix}"
-        
+
         is_active = st.session_state.get(st_key, False)
-        btn_label = f"⏹ Close Camera ({label})" if is_active else f"📷 Open Camera ({label})"
+        btn_label = "⏹ Close In-Browser Feed" if is_active else "📷 Open In-Browser Live Feed"
         if st.button(btn_label, key=f"btn_{key_suffix}"):
             st.session_state[st_key] = not is_active
             st.rerun()
@@ -153,23 +163,11 @@ def _render_image_input(
                 pil_img = Image.open(cam_file)
                 cam_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
-    with c2:
-        up_file = st.file_uploader(
-            f"📁 High-Res Native Camera / Upload ({label})",
-            type=["jpg", "jpeg", "png"],
-            key=f"up_{key_suffix}",
-            help="On mobile devices, tapping this opens your phone's native camera app with full hardware autofocus.",
-        )
-        up_img = None
-        if up_file:
-            pil_img = Image.open(up_file)
-            up_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-
-    selected = cam_img if cam_img is not None else up_img
+    selected = up_img if up_img is not None else cam_img
     if selected is not None:
         from shared.preprocess import enhance_and_deblur_document
         selected = enhance_and_deblur_document(selected)
-        st.image(cv2.cvtColor(selected, cv2.COLOR_BGR2RGB), caption=f"Selected: {label} (Enhanced & Sharpened)", use_container_width=True)
+        st.image(cv2.cvtColor(selected, cv2.COLOR_BGR2RGB), caption=f"Selected: {label} (Auto-Enhanced)", use_container_width=True)
     return selected
 
 
