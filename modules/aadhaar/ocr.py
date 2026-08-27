@@ -327,6 +327,35 @@ def _extract_name_english(
         "PIN",
     }
 
+    import Levenshtein
+
+    HEADER_STOPWORDS = [
+        "GOVERNMENT OF INDIA",
+        "UNIQUE IDENTIFICATION AUTHORITY OF INDIA",
+        "BHARAT SARKAR",
+        "DATE OF BIRTH",
+        "YEAR OF BIRTH",
+        "MERI AADHAAR",
+        "ENROLMENT NO",
+        "HELP LINE",
+        "GOVERNMENT",
+        "INDIA",
+        "AADHAAR",
+        "UIDAI",
+    ]
+
+    def is_header_noise(cand: str) -> bool:
+        c_up = cand.upper().strip()
+        for hw in HEADER_STOPWORDS:
+            if hw in c_up:
+                return True
+            if len(c_up) >= 4:
+                # Check prefix fuzzy match
+                hw_prefix = hw[: min(len(hw), len(c_up))]
+                if Levenshtein.distance(c_up, hw_prefix) <= 2:
+                    return True
+        return False
+
     # 1. First check individual line bounding boxes from OCR
     if line_results:
         for item in line_results:
@@ -344,24 +373,16 @@ def _extract_name_english(
             ).strip()
             words = [w.upper() for w in re.findall(r"[A-Za-z]+", cleaned_line)]
             if len(words) >= 2 and not any(w in EXCLUDE for w in words):
-                if (
-                    re.match(r"^[A-Za-z\s.'-]+$", cleaned_line)
-                    and len(cleaned_line) >= 4
-                ):
-                    return cleaned_line
+                if not is_header_noise(cleaned_line):
+                    if (
+                        re.match(r"^[A-Za-z\s.'-]+$", cleaned_line)
+                        and len(cleaned_line) >= 4
+                    ):
+                        return cleaned_line
 
     # Prepare filtered text by removing known static headers
     filtered_text = text
-    for stop_word in [
-        "GOVERNMENT OF INDIA",
-        "UNIQUE IDENTIFICATION AUTHORITY OF INDIA",
-        "BHARAT SARKAR",
-        "DATE OF BIRTH",
-        "YEAR OF BIRTH",
-        "MERI AADHAAR",
-        "ENROLMENT NO",
-        "HELP LINE",
-    ]:
+    for stop_word in HEADER_STOPWORDS:
         filtered_text = re.sub(stop_word, " ", filtered_text, flags=re.IGNORECASE)
 
     # 2. Try spaCy NER for PERSON entities
@@ -373,7 +394,11 @@ def _extract_name_english(
                 if ent.label_ == "PERSON":
                     clean_ent = re.sub(r"[^A-Za-z\s.'-]", "", ent.text).strip()
                     ent_words = [w.upper() for w in clean_ent.split()]
-                    if len(ent_words) >= 2 and not any(w in EXCLUDE for w in ent_words):
+                    if (
+                        len(ent_words) >= 2
+                        and not any(w in EXCLUDE for w in ent_words)
+                        and not is_header_noise(clean_ent)
+                    ):
                         return clean_ent
         except Exception:
             pass
@@ -389,6 +414,7 @@ def _extract_name_english(
                     if (
                         all(w[0].isupper() for w in cand_words)
                         and len(candidate) >= 4
+                        and not is_header_noise(candidate)
                     ):
                         return candidate
     return None

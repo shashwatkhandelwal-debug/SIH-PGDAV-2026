@@ -144,8 +144,15 @@ def _rule_based_summary(check_results: dict, score_result: dict) -> str:
     if id_graph and id_graph.get("identity_conflict") and "identity_conflict" not in failed:
         failed.append("identity_conflict")
 
+    # Do not treat unreadable/legacy null signatures as cryptographic forgery
+    sig_check = check_results.get("aadhaar_uidai_signature", {})
+    if sig_check.get("valid") is None and "aadhaar_uidai_signature" in failed:
+        failed.remove("aadhaar_uidai_signature")
+
     # If all checks passed and face matched
     if status == "CLEAR" and not face_mismatched and not failed:
+        if check_results.get("verification_tier") == "QR_UNREADABLE":
+            return "Format and physical checks passed, but QR unreadable: recommend camera recapture or secondary manual verification."
         return "All checks passed: document appears genuine and traveler face matched, proceed normally."
 
     # If document passed but face mismatched
