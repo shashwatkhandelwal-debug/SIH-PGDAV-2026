@@ -977,17 +977,22 @@ async def _finalize(
     elif doc_type == "VISA":
         region_checked = "Visa Stamp"
 
-    heatmap_available = ela_full.get("heatmap") is not None
-
-    exif_suspicious = exif_data.get("suspicious", False)
-    if exif_suspicious:
-        notes.append(f"EXIF forensics alert: {', '.join(exif_data.get('flags', []))}")
+    heatmap_b64 = None
+    if ela_full.get("heatmap") is not None:
+        try:
+            _, h_buf = cv2.imencode(".jpg", ela_full["heatmap"])
+            heatmap_b64 = base64.b64encode(h_buf).decode("utf-8")
+        except Exception:
+            pass
 
     tampering_forensics = {
         "full_doc_anomaly_score": full_doc_anomaly_score,
         "region_anomaly_score": region_anomaly_score,
         "region_checked": region_checked,
-        "heatmap_available": heatmap_available,
+        "heatmap_available": heatmap_b64 is not None,
+        "heatmap_base64": heatmap_b64,
+        "digital_splicing_detected": ela_full.get("suspicious", False),
+        "exif_suspicious": exif_suspicious,
     }
 
     # Build Risk Assessment block

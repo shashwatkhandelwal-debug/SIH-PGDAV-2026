@@ -307,6 +307,25 @@ function displayScreeningResults(res, elapsedSec) {
             demoList.appendChild(item);
         }
     }
+
+    // ELA Forensics Heatmap
+    const elaContainer = document.getElementById("ela-heatmap-container");
+    const forensics = res.tampering_forensics || {};
+    if (forensics.heatmap_base64) {
+        elaContainer.innerHTML = `<img src="data:image/jpeg;base64,${forensics.heatmap_base64}" class="w-full h-auto max-h-56 object-contain rounded-xl">`;
+    } else {
+        elaContainer.innerHTML = `<div class="p-4 text-center text-slate-500 text-xs">Authentic uniform compression matrix</div>`;
+    }
+    const elaStatus = document.getElementById("ela-status");
+    if (elaStatus) {
+        elaStatus.textContent = forensics.digital_splicing_detected ? "Anomaly Detected" : "Clean (Authentic)";
+        elaStatus.className = forensics.digital_splicing_detected ? "font-mono text-rose-400" : "font-mono text-emerald-400";
+    }
+    const exifStatus = document.getElementById("exif-status");
+    if (exifStatus) {
+        exifStatus.textContent = forensics.exif_suspicious ? "Editing Software Detected" : "Authentic Camera";
+        exifStatus.className = forensics.exif_suspicious ? "font-mono text-rose-400" : "font-mono text-emerald-400";
+    }
 }
 
 async function loadAuditLogs() {

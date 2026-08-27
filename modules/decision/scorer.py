@@ -46,16 +46,22 @@ def compute_score(
 
     # Common ELA Anomaly calculation (shared across all document types)
     ela_variance = 0.0
+    is_suspicious = False
     ela_res = check_results.get("ela_full_document")
     if isinstance(ela_res, dict):
+        is_suspicious = bool(ela_res.get("suspicious", False))
         ela_variance = float(ela_res.get("mean_variance", 0.0))
     elif "ela_region_restricted" in check_results:
         reg_res = check_results["ela_region_restricted"]
         if isinstance(reg_res, dict):
+            is_suspicious = bool(reg_res.get("suspicious", False))
             ela_variance = float(reg_res.get("mean_variance", 0.0))
 
-    ela_anomaly_normalized = min(1.0, ela_variance / ELA_NORMALIZATION_THRESHOLD)
-    term_ela = 20.0 * ela_anomaly_normalized
+    if is_suspicious:
+        ela_anomaly_normalized = min(1.0, ela_variance / ELA_NORMALIZATION_THRESHOLD)
+        term_ela = 20.0 * ela_anomaly_normalized
+    else:
+        term_ela = 0.0
 
     if doc_type in ("DRIVING_LICENCE", "DL"):
         # Standardized 30 + 30 + 20 + 20 matrix for Driving Licence
