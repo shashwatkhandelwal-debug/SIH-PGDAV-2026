@@ -1039,8 +1039,11 @@ async def _load_image_from_upload(upload: UploadFile) -> np.ndarray:
     img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
     if img is None:
         raise HTTPException(status_code=400, detail="Invalid image file")
-    from shared.preprocess import enhance_and_deblur_document
-    return enhance_and_deblur_document(img, max_dim=1600)
+    h, w = img.shape[:2]
+    if max(h, w) > 2000:
+        scale = 2000.0 / float(max(h, w))
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    return img
 
 
 async def _run_exif_forensics(upload: UploadFile) -> dict:

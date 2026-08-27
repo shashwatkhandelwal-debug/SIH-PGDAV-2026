@@ -154,7 +154,18 @@ def _detect_and_decode_qr(
             if data:
                 return data, (x1, y1, x2, y2)
 
-    # Step 3: OpenCV QRCodeDetector fallback
+    # Step 3: Rotation sweeps (90 deg, 180 deg, 270 deg) for phone camera orientations
+    for rot in [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180, cv2.ROTATE_90_COUNTERCLOCKWISE]:
+        rot_img = cv2.rotate(gray, rot)
+        data, _ = try_pyzbar(rot_img)
+        if data:
+            return data, (0, 0, w, h)
+        rot_enh = clahe.apply(rot_img)
+        data, _ = try_pyzbar(rot_enh)
+        if data:
+            return data, (0, 0, w, h)
+
+    # Step 4: OpenCV QRCodeDetector fallback
     try:
         detector = cv2.QRCodeDetector()
         val, points, _ = detector.detectAndDecode(gray)
