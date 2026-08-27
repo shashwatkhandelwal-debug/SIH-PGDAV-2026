@@ -1,6 +1,7 @@
 libgl1
-libglib2.0-0t64
+libglib2.0-0
 libzbar0
 tesseract-ocr
 tesseract-ocr-hin
+
 
