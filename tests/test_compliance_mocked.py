@@ -281,6 +281,55 @@ async def test_aadhaar_unreadable_tampered():
         assert resp["risk_assessment"]["overall_score"] >= 80.0
 
 
+async def test_aadhaar_unreadable_fabricated_clean():
+    """
+    Test clean-fabricated Aadhaar with destroyed QR, valid Verhoeff, and low ELA noise.
+    Demonstrates the honest boundary of QR_UNREADABLE (scores CLEAR/near-CLEAR,
+    requiring mandatory secondary manual inspection policy).
+    """
+    img = create_mock_document(aadhaar_lines)
+    real_ocr = extract_aadhaar_fields(img)
+
+    ocr_mock = {
+        "uid": "234123412346",  # Valid Verhoeff check digit (checksum passes)
+        "name_en": "Shashwat Khandelwal",
+        "name_hi": "शाश्वत खंडेलवाल",
+        "dob": "12/05/1990",
+        "gender": "MALE",
+        "address": "7/168 B Swaroop nagar Kanpur",
+        "confidence": real_ocr["confidence"],
+    }
+
+    qr_mock = {
+        "error": "No QR code detected",
+        "fields": {},
+        "region": None,
+    }
+
+    with patch(
+        "modules.aadhaar.ocr.extract_aadhaar_fields", return_value=ocr_mock
+    ), patch("modules.aadhaar.qr.decode_aadhaar_qr", return_value=qr_mock), patch(
+        "modules.forensics.ela.run_ela",
+        return_value={
+            "mean_variance": 1.2,  # Low ELA variance (clean fabricated print, no digital splice)
+            "heatmap": np.zeros((10, 10, 3)),
+            "suspicious": False,
+        },
+    ):
+        results, notes = await _run_aadhaar_checks(img)
+        resp = await _finalize(
+            results, "AADHAAR", ocr_mock["uid"], ocr_mock["name_en"], {}, notes
+        )
+        print("\n========================================")
+        print("CLEAN FABRICATED UNREADABLE AADHAAR (QR_UNREADABLE) JSON RESPONSE:")
+        print("========================================")
+        print(json.dumps(resp, indent=2))
+        assert resp["validation"]["verification_tier"] == "QR_UNREADABLE"
+        assert resp["validation"]["signature_valid"] is None
+        assert resp["risk_assessment"]["status"] == "CLEAR"
+        assert resp["risk_assessment"]["overall_score"] <= 10.0
+
+
 async def test_passport_genuine_chip_verified():
     """Case (a): Genuine passport with full chip verification succeeding"""
     img = create_mock_document(passport_lines_new)
@@ -652,6 +701,7 @@ async def main():
     await test_aadhaar_tampered()
     await test_aadhaar_legacy_genuine()
     await test_aadhaar_unreadable_tampered()
+    await test_aadhaar_unreadable_fabricated_clean()
     await test_passport_genuine_chip_verified()
     await test_passport_genuine_chip_unavailable()
     await test_passport_tampered_chip_unavailable()

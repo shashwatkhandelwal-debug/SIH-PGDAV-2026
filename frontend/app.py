@@ -547,15 +547,28 @@ def _display_results(results: dict):
     # Risk badge
     color_map = {"CLEAR": "green", "REVIEW": "orange", "FLAGGED": "red"}
     color = color_map.get(risk, "gray")
-    st.markdown(
-        f"### Risk Level: :{color}[**{risk}**] &nbsp; Score: **{total:.0f}/100**"
-    )
+    check_results = results.get("check_results", {})
+    verification_tier = check_results.get("verification_tier")
+
+    if verification_tier == "QR_UNREADABLE" and risk in ("CLEAR", "REVIEW"):
+        st.markdown(
+            f"### Risk Level: :orange[**UNVERIFIED (LOW CONFIDENCE)**] &nbsp; Calculated Score: **{total:.0f}/100**"
+        )
+        st.warning(
+            "⚠️ **POLICY ALERT: MANDATORY SECONDARY MANUAL INSPECTION REQUIRED**\n\n"
+            "The QR code could not be cryptographically decoded due to capture quality (glare, blur, or missing QR). "
+            "A clean printed fake with a fabricated checksum number cannot be authenticated without QR cryptographic validation. "
+            "Policy requires mandatory physical inspection and camera recapture."
+        )
+    else:
+        st.markdown(
+            f"### Risk Level: :{color}[**{risk}**] &nbsp; Score: **{total:.0f}/100**"
+        )
 
     # LLM summary
     st.info(f"💬 **Officer Summary**: {summary}")
 
     # Identity Graph Alert
-    check_results = results.get("check_results", {})
     id_graph = check_results.get("identity_graph", {})
     if id_graph and id_graph.get("identity_conflict"):
         st.error("⚠️ **Identity Conflict Detected (Cross-Document Match)**")
