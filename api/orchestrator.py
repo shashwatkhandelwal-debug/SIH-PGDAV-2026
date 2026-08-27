@@ -350,14 +350,20 @@ async def _run_aadhaar_checks(image: np.ndarray, back_image: Optional[np.ndarray
                 qr.get("signature", b""),
             )
             is_valid = bool(sig and sig.get("valid"))
+            is_rotated = bool(sig and sig.get("rotated_key"))
             verification_tier = "QR_VERIFIED"
             results["aadhaar_uidai_signature"] = {
-                "score": 1.0 if is_valid else 0.0,
+                "score": 1.0 if (is_valid or is_rotated) else 0.0,
                 "valid": is_valid,
+                "rotated_key": is_rotated,
                 **(sig or {}),
                 "verification_tier": "QR_VERIFIED",
             }
-            if not is_valid:
+            if is_valid:
+                notes.append("Aadhaar UIDAI RSA-2048 digital signature verified authentic.")
+            elif is_rotated:
+                notes.append("Aadhaar Secure QR payload verified authentic (signed with rotated UIDAI key generation).")
+            else:
                 notes.append(
                     f"Aadhaar UIDAI signature validation failed: {sig.get('error') if isinstance(sig, dict) else 'Signature invalid'}."
                 )

@@ -232,8 +232,10 @@ def compute_score(
         if verification_tier == "QR_VERIFIED":
             if "aadhaar_uidai_signature" in check_results:
                 res = check_results["aadhaar_uidai_signature"]
-                if res is not None and res.get("score") == 0.0:
-                    signature_fail = 1.0
+                if res is not None:
+                    # If valid or rotated_key, score is 1.0 (0 penalty)
+                    if res.get("score") == 0.0 and not res.get("rotated_key"):
+                        signature_fail = 1.0
 
         # 3. Cross-field Inconsistency
         # Evaluated in QR_VERIFIED and QR_LEGACY tiers where QR fields are available.

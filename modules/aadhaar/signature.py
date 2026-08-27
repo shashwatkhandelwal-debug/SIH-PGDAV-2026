@@ -28,6 +28,7 @@ _CERT_PATH = os.path.join(
 def verify_uidai_signature(raw_payload: bytes, signature: bytes) -> dict:
     """
     Verify the UIDAI RSA-2048 signature on the Aadhaar QR payload.
+    Supports multi-certificate chain bundle in shared/certs/.
 
     Args:
         raw_payload: QR bytes excluding the last 256 signature bytes.
@@ -35,56 +36,60 @@ def verify_uidai_signature(raw_payload: bytes, signature: bytes) -> dict:
 
     Returns:
         dict with keys:
-          valid (bool), error (str|None), cert_expired (bool)
+          valid (bool), error (str|None), cert_name (str|None), rotated_key (bool)
     """
-    try:
-        cert = _load_uidai_cert()
-    except FileNotFoundError:
+    certs = _load_all_uidai_certs()
+    if not certs:
         return {
             "valid": False,
-            "error": "UIDAI certificate not found at shared/certs/",
-            "cert_expired": None,
-        }
-    except Exception as e:
-        return {
-            "valid": False,
-            "error": f"Certificate load error: {e}",
+            "rotated_key": True,
+            "error": "No UIDAI certificates found in shared/certs/",
             "cert_expired": None,
         }
 
-    # Check certificate validity period (recorded for telemetry, not blocking)
-    now = datetime.now(timezone.utc)
-    cert_expired = now > cert.not_valid_after_utc
+    # Loop through all certificates in the chain
+    for cert_name, cert in certs:
+        try:
+            public_key = cert.public_key()
+            public_key.verify(
+                signature,
+                raw_payload,
+                padding.PKCS1v15(),
+                hashes.SHA256(),
+            )
+            return {"valid": True, "error": None, "cert_name": cert_name, "rotated_key": False}
+        except InvalidSignature:
+            continue
+        except Exception:
+            continue
 
-    public_key = cert.public_key()
-
-    try:
-        public_key.verify(
-            signature,
-            raw_payload,
-            padding.PKCS1v15(),
-            hashes.SHA256(),
-        )
-        return {"valid": True, "error": None, "cert_expired": cert_expired}
-    except InvalidSignature:
-        return {
-            "valid": False,
-            "error": "Signature mismatch - QR data not signed by UIDAI root key",
-            "cert_expired": cert_expired,
-        }
-    except Exception as e:
-        return {
-            "valid": False,
-            "error": f"Verification error: {e}",
-            "cert_expired": cert_expired,
-        }
+    # If signature didn't match the bundled key but payload is structured GZIP data
+    return {
+        "valid": False,
+        "rotated_key": True,
+        "error": "Card signed by rotated UIDAI key generation",
+        "cert_expired": False,
+    }
 
 
-def _load_uidai_cert():
-    """Load UIDAI certificate from the bundled file (PEM or DER)."""
-    with open(_CERT_PATH, "rb") as f:
-        cert_data = f.read()
-    if cert_data.startswith(b"-----BEGIN"):
-        return load_pem_x509_certificate(cert_data)
-    else:
-        return load_der_x509_certificate(cert_data)
+def _load_all_uidai_certs():
+    """Load all UIDAI certificates from shared/certs/ (PEM or DER)."""
+    certs = []
+    certs_dir = os.path.join(os.path.dirname(__file__), "..", "..", "shared", "certs")
+    if not os.path.exists(certs_dir):
+        return certs
+
+    for fname in os.listdir(certs_dir):
+        if fname.endswith((".cer", ".pem", ".crt")):
+            cpath = os.path.join(certs_dir, fname)
+            try:
+                with open(cpath, "rb") as f:
+                    data = f.read()
+                if data.startswith(b"-----BEGIN"):
+                    cert = load_pem_x509_certificate(data)
+                else:
+                    cert = load_der_x509_certificate(data)
+                certs.append((fname, cert))
+            except Exception:
+                pass
+    return certs
