@@ -26,6 +26,8 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 app = FastAPI(
@@ -43,25 +45,45 @@ app.add_middleware(
 
 _TIMEOUT_SECONDS = 10.0
 
+# Mount static frontend
+_static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "static")
+if os.path.exists(_static_dir):
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+
+@app.get("/", response_class=FileResponse)
+async def serve_index():
+    index_file = os.path.join(_static_dir, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    return {"status": "ok", "message": "SSB Border Screening API"}
+
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 
 @app.post("/screen/aadhaar")
 async def screen_aadhaar(
-    document: UploadFile = File(...),
+    document: Optional[UploadFile] = File(None),
+    front: Optional[UploadFile] = File(None),
+    back: Optional[UploadFile] = File(None),
     live_face: Optional[UploadFile] = File(None),
 ):
-    """Screen an Aadhaar card image."""
-    doc_image = await _load_image_from_upload(document)
-    live_image = await _load_image_from_upload(live_face) if live_face else None
-    exif_data = await _run_exif_forensics(document)
+    """Screen an Aadhaar card image (supporting front and back uploads)."""
+    primary = front or document
+    if primary is None:
+        raise HTTPException(status_code=400, detail="Document image is required")
 
-    check_results, notes = await _run_aadhaar_checks(doc_image)
+    front_image = await _load_image_from_upload(primary)
+    back_image = await _load_image_from_upload(back) if back else None
+    live_image = await _load_image_from_upload(live_face) if live_face else None
+    exif_data = await _run_exif_forensics(primary)
+
+    check_results, notes = await _run_aadhaar_checks(front_image, back_image)
 
     if live_image is not None:
         face_result = await _safe_run(
-            _run_face_checks, doc_image, live_image, "AADHAAR"
+            _run_face_checks, front_image, live_image, "AADHAAR"
         )
         if face_result:
             check_results.update(face_result)
@@ -200,7 +222,7 @@ async def health():
 # ── Module pipelines ───────────────────────────────────────────────────────────
 
 
-async def _run_aadhaar_checks(image: np.ndarray) -> tuple[dict, list]:
+async def _run_aadhaar_checks(image: np.ndarray, back_image: Optional[np.ndarray] = None) -> tuple[dict, list]:
     results = {}
     notes = []
 
@@ -218,7 +240,13 @@ async def _run_aadhaar_checks(image: np.ndarray) -> tuple[dict, list]:
         notes.append(f"Quality alert: {', '.join(quality['issues'])}")
 
     ocr = await _safe_run(extract_aadhaar_fields, image)
-    qr = await _safe_run(decode_aadhaar_qr, image)
+    
+    # Try QR on back image first, then fallback to front image
+    qr = None
+    if back_image is not None:
+        qr = await _safe_run(decode_aadhaar_qr, back_image)
+    if not qr or qr.get("error"):
+        qr = await _safe_run(decode_aadhaar_qr, image)
 
     uid = (ocr or {}).get("uid", "")
     if uid:

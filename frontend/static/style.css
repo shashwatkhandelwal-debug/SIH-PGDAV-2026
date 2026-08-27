@@ -1,0 +1,24 @@
+/* Custom Styles & Animation */
+@keyframes scanline {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(1000%); }
+}
+
+.scanline-active::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(90deg, transparent, #00E676, #FFFFFF, #00E676, transparent);
+    animation: scanline 2.5s ease-in-out infinite;
+    box-shadow: 0 0 15px #00E676;
+    pointer-events: none;
+}
+
+.doc-btn.active {
+    border-color: #10B981 !important;
+    background-color: rgba(16, 185, 129, 0.1) !important;
+    color: #10B981 !important;
+}

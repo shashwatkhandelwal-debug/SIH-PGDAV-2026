@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SSB Document Screening | MHA Border Security</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 500: '#00E676', 600: '#00C853', dark: '#0F172A', card: '#1E293B', border: '#334155' }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-slate-950 text-slate-100 font-['Inter'] min-h-screen pb-12 antialiased selection:bg-emerald-500 selection:text-black">
+
+    <!-- Top Header -->
+    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-40 px-4 py-3">
+        <div class="max-w-5xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xl font-bold">
+                    🛂
+                </div>
+                <div>
+                    <h1 class="text-base sm:text-lg font-bold leading-tight tracking-tight text-white flex items-center gap-2">
+                        SSB Border Screening Engine
+                        <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono border border-emerald-500/30">PS-6188</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Sashastra Seema Bal | Ministry of Home Affairs</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-xs font-mono text-emerald-400 font-semibold hidden sm:inline">ONLINE</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-5xl mx-auto px-4 mt-4">
+        <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800 space-x-1">
+            <button onclick="switchTab('screen')" id="tab-btn-screen" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all bg-emerald-500 text-slate-950 shadow-md">
+                <i class="fa-solid fa-id-card"></i> <span>Screen Document</span>
+            </button>
+            <button onclick="switchTab('audit')" id="tab-btn-audit" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
+                <i class="fa-solid fa-clipboard-list"></i> <span>Audit Trail</span>
+            </button>
+            <button onclick="switchTab('watchlist')" id="tab-btn-watchlist" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
+                <i class="fa-solid fa-shield-halved"></i> <span>Watchlist</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <main class="max-w-5xl mx-auto px-4 mt-6">
+
+        <!-- TAB 1: DOCUMENT SCREENING -->
+        <section id="tab-screen" class="space-y-6">
+
+            <!-- Document Type Selector -->
+            <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Select Document Type</label>
+                <div class="grid grid-cols-3 sm:grid-cols-6 gap-2" id="doc-type-buttons">
+                    <button onclick="selectDocType('AADHAAR')" class="doc-btn active flex flex-col items-center justify-center p-3 rounded-xl border border-emerald-500 bg-emerald-500/10 text-emerald-400 transition-all font-semibold text-xs" data-type="AADHAAR">
+                        <i class="fa-solid fa-fingerprint text-lg mb-1"></i> Aadhaar
+                    </button>
+                    <button onclick="selectDocType('PASSPORT')" class="doc-btn flex flex-col items-center justify-center p-3 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700 transition-all font-semibold text-xs" data-type="PASSPORT">
+                        <i class="fa-solid fa-passport text-lg mb-1"></i> Passport
+                    </button>
+                    <button onclick="selectDocType('VISA')" class="doc-btn flex flex-col items-center justify-center p-3 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700 transition-all font-semibold text-xs" data-type="VISA">
+                        <i class="fa-solid fa-stamp text-lg mb-1"></i> Visa
+                    </button>
+                    <button onclick="selectDocType('DL')" class="doc-btn flex flex-col items-center justify-center p-3 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700 transition-all font-semibold text-xs" data-type="DL">
+                        <i class="fa-solid fa-car text-lg mb-1"></i> Driving Lic.
+                    </button>
+                    <button onclick="selectDocType('PERMIT')" class="doc-btn flex flex-col items-center justify-center p-3 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700 transition-all font-semibold text-xs" data-type="PERMIT">
+                        <i class="fa-solid fa-file-contract text-lg mb-1"></i> Permit
+                    </button>
+                    <button onclick="selectDocType('GENERIC_ID')" class="doc-btn flex flex-col items-center justify-center p-3 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700 transition-all font-semibold text-xs" data-type="GENERIC_ID">
+                        <i class="fa-solid fa-address-card text-lg mb-1"></i> Voter / ID
+                    </button>
+                </div>
+            </div>
+
+            <!-- Capture Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="capture-container">
+                <!-- Dynamically populated based on active doc_type -->
+            </div>
+
+            <!-- Optional Live Traveler Face Verification -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-camera text-slate-400"></i>
+                        <span class="text-sm font-semibold text-slate-300">Live Face Verification (Optional)</span>
+                    </div>
+                    <span class="text-xs text-slate-500">Cross-checks document photo against live face</span>
+                </div>
+                <div id="face-capture-card">
+                    <!-- Face capture widget -->
+                </div>
+            </div>
+
+            <!-- Action Button -->
+            <button id="btn-screen-submit" onclick="submitScreening()" class="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-base shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-3 transition-all active:scale-[0.98]">
+                <i class="fa-solid fa-bolt text-lg"></i>
+                <span>Execute Deep Multi-Layer Screening</span>
+            </button>
+
+            <!-- Results Section (Hidden initially) -->
+            <div id="results-panel" class="hidden space-y-6 pt-4 border-t border-slate-800">
+
+                <!-- Overall Risk Header -->
+                <div id="risk-banner" class="rounded-2xl p-5 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span id="risk-badge" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider font-mono">CLEAR</span>
+                            <span id="latency-tag" class="text-xs text-slate-400 font-mono">⚡ 0.42 s</span>
+                        </div>
+                        <h2 class="text-2xl font-extrabold mt-1 text-white flex items-baseline gap-2">
+                            <span id="risk-score">0</span><span class="text-sm text-slate-400 font-normal">/ 100 Risk Score</span>
+                        </h2>
+                    </div>
+                    <div id="officer-summary-box" class="flex-1 sm:max-w-md bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-xs text-slate-300">
+                        <span class="font-bold text-slate-400 block mb-0.5">💬 Officer Summary:</span>
+                        <span id="officer-summary-text">All biometric and cryptographic validation checks passed successfully.</span>
+                    </div>
+                </div>
+
+                <!-- Identity Conflict Alert -->
+                <div id="conflict-alert" class="hidden bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 text-rose-400">
+                    <div class="flex items-center gap-2 font-bold text-sm">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Identity Graph Cross-Match Conflict Detected
+                    </div>
+                    <p id="conflict-details" class="text-xs mt-1 text-rose-300"></p>
+                </div>
+
+                <!-- Security Checks Breakdown Grid -->
+                <div>
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Verification Breakdown</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" id="checks-grid">
+                        <!-- Check tiles populated via JS -->
+                    </div>
+                </div>
+
+                <!-- ELA Forensics & Demographics Grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <!-- Extracted Demographics -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-user-check text-emerald-400"></i> Extracted Demographics
+                        </h3>
+                        <div id="demographics-list" class="space-y-2 text-xs">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+
+                    <!-- ELA Heatmap -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-microscope text-teal-400"></i> Error Level Analysis (ELA)
+                        </h3>
+                        <div class="space-y-3">
+                            <div id="ela-heatmap-container" class="rounded-xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center min-h-[160px]">
+                                <span class="text-xs text-slate-500">Forensic heatmap rendering...</span>
+                            </div>
+                            <div class="text-xs text-slate-400 space-y-1">
+                                <div class="flex justify-between"><span>Digital Splicing Audit:</span><span id="ela-status" class="font-mono text-emerald-400">Clean</span></div>
+                                <div class="flex justify-between"><span>EXIF Tool Tampering:</span><span id="exif-status" class="font-mono text-emerald-400">Authentic Camera</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- TAB 2: AUDIT TRAIL -->
+        <section id="tab-audit-view" class="hidden space-y-4">
+            <div class="flex items-center justify-between">
+                <h2 class="text-base font-bold text-white">Immutable Screening Audit Log</h2>
+                <button onclick="loadAuditLogs()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                </button>
+            </div>
+            <div id="audit-log-list" class="space-y-2">
+                <!-- Populated via JS -->
+            </div>
+        </section>
+
+        <!-- TAB 3: WATCHLIST MANAGER -->
+        <section id="tab-watchlist-view" class="hidden space-y-4">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <h2 class="text-base font-bold text-white mb-2">Blacklist & Watchlist Manager</h2>
+                <p class="text-xs text-slate-400 mb-4">Add high-risk document numbers or names to trigger immediate 100/100 FLAGGED overrides during screening.</p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                    <input type="text" id="wl-doc-num" placeholder="Document Number (e.g. L8406789)" class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                    <input type="text" id="wl-reason" placeholder="Reason (e.g. Interpol Notice / Wanted)" class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                    <button onclick="addWatchlistEntry()" class="bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs py-2 px-4 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Add to Blacklist
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
