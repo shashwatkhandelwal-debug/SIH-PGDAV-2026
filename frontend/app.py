@@ -132,28 +132,45 @@ def _render_image_input(
     label: str, key_suffix: str, scan_type: str = "doc"
 ) -> Optional[np.ndarray]:
     """
-    Direct Native Phone Camera launcher.
-    Tapping this button opens your phone's native Camera application directly.
-    Once the picture is taken, it is previewed on screen and automatically passed to OpenBharatOCR & PyZBar.
+    Renders direct live camera viewfinder by default with instant visual preview and auto-pipeline pass.
     """
-    cam_file = st.file_uploader(
-        f"📸 Tap to Open Phone Camera: {label}",
-        type=["jpg", "jpeg", "png"],
-        key=f"cam_{key_suffix}",
-        help="Opens your phone's native camera app with autofocus.",
+    mode = st.radio(
+        f"Input source for {label}:",
+        ["📷 Live Camera", "📁 File Upload"],
+        key=f"mode_{key_suffix}",
+        horizontal=True,
+        label_visibility="collapsed",
     )
 
-    if cam_file is not None:
-        pil_img = Image.open(cam_file)
-        img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+    img_source = None
+    if mode == "📷 Live Camera":
+        cls_name = "qr-scan-container" if scan_type == "qr" else "doc-scan-container"
+        st.markdown(f'<div class="{cls_name}">', unsafe_allow_html=True)
+        cam_file = st.camera_input(f"Capture {label}", key=f"cam_{key_suffix}")
+        st.markdown("</div>", unsafe_allow_html=True)
+        if cam_file is not None:
+            pil_img = Image.open(cam_file)
+            img_source = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+    else:
+        up_file = st.file_uploader(
+            f"Upload {label} Image",
+            type=["jpg", "jpeg", "png"],
+            key=f"up_{key_suffix}",
+        )
+        if up_file is not None:
+            pil_img = Image.open(up_file)
+            img_source = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+
+    if img_source is not None:
         from shared.preprocess import enhance_and_deblur_document
-        enhanced = enhance_and_deblur_document(img)
+        enhanced = enhance_and_deblur_document(img_source)
         st.image(
             cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB),
             caption=f"Captured: {label} (Preview)",
             use_container_width=True,
         )
         return enhanced
+
     return None
 
 
