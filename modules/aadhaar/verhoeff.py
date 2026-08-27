@@ -55,12 +55,22 @@ def verhoeff_validate(number: str) -> bool:
     """
     number = number.replace(" ", "").replace("-", "")
     if not number.isdigit() or len(number) != 12:
+        print(f"[DEBUG Verhoeff] Rejected: '{number}' is not a 12-digit number")
         return False
 
     c = 0
+    print(f"[DEBUG Verhoeff] Input UID: '{number}' (Length: {len(number)})")
     for i, digit in enumerate(reversed(number)):
-        c = _D[c][_P[i % 8][int(digit)]]
-    return c == 0
+        prev_c = c
+        p_val = _P[i % 8][int(digit)]
+        c = _D[c][p_val]
+        print(
+            f"  [DEBUG Verhoeff] Iteration i={i:02d} (digit='{digit}'): "
+            f"_P[{i % 8}][{digit}]={p_val} -> c = _D[{prev_c}][{p_val}] = {c}"
+        )
+    is_valid = (c == 0)
+    print(f"[DEBUG Verhoeff] Final Accumulator c = {c} -> isValid = {is_valid}")
+    return is_valid
 
 
 def verhoeff_generate(number: str) -> str:

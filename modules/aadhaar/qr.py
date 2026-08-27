@@ -121,21 +121,28 @@ def decode_aadhaar_qr(image: np.ndarray) -> dict:
         dict with keys: format ('xml'|'binary'), fields (dict), raw_payload (bytes),
         signature (bytes), error (str|None)
     """
+    print("[DEBUG QR Decoder] Starting QR detection across multi-pass pipeline...")
     qr_data, region = _detect_and_decode_qr(image)
 
     if qr_data is None:
+        print("[DEBUG QR Decoder] RESULT: No QR code detected (Decoder returned None / empty result).")
         return {"error": "No QR code detected", "fields": {}, "region": None}
+
+    payload_len = len(qr_data)
+    print(f"[DEBUG QR Decoder] RESULT: QR successfully detected & decoded! Raw payload length: {payload_len} bytes.")
 
     # Detect format
     res = None
     try:
         text = qr_data.decode("utf-8")
         if text.strip().startswith("<"):
+            print("[DEBUG QR Decoder] Detected format: XML format (pre-2017)")
             res = _parse_xml_format(text, qr_data)
     except UnicodeDecodeError:
         pass  # Binary format
 
     if res is None:
+        print("[DEBUG QR Decoder] Detected format: Binary format (Secure QR post-2017)")
         res = _parse_binary_format(qr_data)
 
     res["region"] = region

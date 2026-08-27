@@ -181,6 +181,106 @@ async def test_aadhaar_tampered():
         print(json.dumps(resp, indent=2))
 
 
+async def test_aadhaar_legacy_genuine():
+    """Test genuine pre-2017 XML format Aadhaar without digital signature block (QR_LEGACY)."""
+    img = create_mock_document(aadhaar_lines)
+    real_ocr = extract_aadhaar_fields(img)
+
+    ocr_mock = {
+        "uid": "234123412346",
+        "name_en": "Shashwat Khandelwal",
+        "name_hi": "शाश्वत खंडेलवाल",
+        "dob": "12/05/1990",
+        "gender": "MALE",
+        "address": "7/168 B Swaroop nagar Kanpur",
+        "confidence": real_ocr["confidence"],
+    }
+
+    qr_mock = {
+        "format": "xml",
+        "fields": {
+            "name": "Shashwat Khandelwal",
+            "dob": "12/05/1990",
+            "gender": "M",
+            "uid_last4": "2346",
+        },
+        "raw_payload": b"<xml data>",
+        "signature": None,
+        "region": (100, 200, 300, 400),
+        "error": None,
+    }
+
+    with patch(
+        "modules.aadhaar.ocr.extract_aadhaar_fields", return_value=ocr_mock
+    ), patch("modules.aadhaar.qr.decode_aadhaar_qr", return_value=qr_mock), patch(
+        "modules.aadhaar.consistency.check_qr_ocr_consistency",
+        return_value={"consistent": True, "mismatches": []},
+    ), patch(
+        "modules.forensics.ela.run_ela",
+        return_value={
+            "mean_variance": 1.2,
+            "heatmap": np.zeros((10, 10, 3)),
+            "suspicious": False,
+        },
+    ):
+        results, notes = await _run_aadhaar_checks(img)
+        resp = await _finalize(
+            results, "AADHAAR", ocr_mock["uid"], ocr_mock["name_en"], {}, notes
+        )
+        print("\n========================================")
+        print("GENUINE LEGACY AADHAAR (QR_LEGACY) JSON RESPONSE:")
+        print("========================================")
+        print(json.dumps(resp, indent=2))
+        assert resp["validation"]["verification_tier"] == "QR_LEGACY"
+        assert resp["validation"]["signature_valid"] is None
+        assert resp["risk_assessment"]["status"] == "CLEAR"
+
+
+async def test_aadhaar_unreadable_tampered():
+    """Test tampered Aadhaar with capture failure (QR_UNREADABLE) and bad Verhoeff + ELA anomaly."""
+    img = create_mock_document(aadhaar_lines)
+    real_ocr = extract_aadhaar_fields(img)
+
+    ocr_mock = {
+        "uid": "234123412341",  # Invalid Verhoeff check digit
+        "name_en": "Fake Name",
+        "name_hi": "फेक नेम",
+        "dob": "12/05/1990",
+        "gender": "MALE",
+        "address": "7/168 B Swaroop nagar Kanpur",
+        "confidence": real_ocr["confidence"],
+    }
+
+    qr_mock = {
+        "error": "No QR code detected",
+        "fields": {},
+        "region": None,
+    }
+
+    with patch(
+        "modules.aadhaar.ocr.extract_aadhaar_fields", return_value=ocr_mock
+    ), patch("modules.aadhaar.qr.decode_aadhaar_qr", return_value=qr_mock), patch(
+        "modules.forensics.ela.run_ela",
+        return_value={
+            "mean_variance": 22.5,
+            "heatmap": np.zeros((10, 10, 3)),
+            "suspicious": True,
+        },
+    ):
+        results, notes = await _run_aadhaar_checks(img)
+        resp = await _finalize(
+            results, "AADHAAR", ocr_mock["uid"], ocr_mock["name_en"], {}, notes
+        )
+        print("\n========================================")
+        print("TAMPERED UNREADABLE AADHAAR (QR_UNREADABLE) JSON RESPONSE:")
+        print("========================================")
+        print(json.dumps(resp, indent=2))
+        assert resp["validation"]["verification_tier"] == "QR_UNREADABLE"
+        assert resp["validation"]["signature_valid"] is None
+        assert resp["risk_assessment"]["status"] == "FLAGGED"
+        assert resp["risk_assessment"]["overall_score"] >= 80.0
+
+
 async def test_passport_genuine_chip_verified():
     """Case (a): Genuine passport with full chip verification succeeding"""
     img = create_mock_document(passport_lines_new)
@@ -550,6 +650,8 @@ async def test_visa_duration_rule_only_fail():
 async def main():
     await test_aadhaar_genuine()
     await test_aadhaar_tampered()
+    await test_aadhaar_legacy_genuine()
+    await test_aadhaar_unreadable_tampered()
     await test_passport_genuine_chip_verified()
     await test_passport_genuine_chip_unavailable()
     await test_passport_tampered_chip_unavailable()

@@ -196,31 +196,68 @@ async def _run_aadhaar_checks(image: np.ndarray) -> tuple[dict, list]:
     if qr and not qr.get("error"):
         results["_qr"] = qr
         qr_region = qr.get("region")
-        sig = await _safe_run(
-            verify_uidai_signature, qr["raw_payload"], qr["signature"]
-        )
-        results["aadhaar_uidai_signature"] = {
-            "score": 1.0 if (sig and sig.get("valid")) else 0.0,
-            **(sig or {}),
-        }
+        is_xml_legacy = (qr.get("format") == "xml") and (not qr.get("signature"))
+        if is_xml_legacy:
+            verification_tier = "QR_LEGACY"
+            results["aadhaar_uidai_signature"] = {
+                "score": 1.0,
+                "valid": None,
+                "error": "Older pre-2017 QR format without digital signature",
+                "verification_tier": "QR_LEGACY",
+            }
+            notes.append(
+                "Pre-2017 XML Aadhaar QR format detected without digital signature, verification based on Verhoeff checksum, QR-OCR consistency, and ELA forensics"
+            )
+        else:
+            sig = await _safe_run(
+                verify_uidai_signature,
+                qr.get("raw_payload", b""),
+                qr.get("signature", b""),
+            )
+            is_valid = bool(sig and sig.get("valid"))
+            verification_tier = "QR_VERIFIED"
+            results["aadhaar_uidai_signature"] = {
+                "score": 1.0 if is_valid else 0.0,
+                "valid": is_valid,
+                **(sig or {}),
+                "verification_tier": "QR_VERIFIED",
+            }
+            if not is_valid:
+                notes.append(
+                    f"Aadhaar UIDAI signature validation failed: {sig.get('error') if isinstance(sig, dict) else 'Signature invalid'}."
+                )
+
         cons = await _safe_run(
             check_qr_ocr_consistency, qr.get("fields", {}), ocr or {}
         )
+        is_consistent = bool(cons and cons.get("consistent"))
         results["aadhaar_qr_ocr_consistency"] = {
-            "score": 1.0 if (cons and cons.get("consistent")) else 0.0,
+            "score": 1.0 if is_consistent else 0.0,
             **(cons or {}),
         }
+        if not is_consistent:
+            notes.append(
+                f"Aadhaar QR-OCR consistency check failed: {cons.get('mismatches') if isinstance(cons, dict) else 'Demographics mismatch'}."
+            )
     else:
+        verification_tier = "QR_UNREADABLE"
         results["aadhaar_uidai_signature"] = {
             "score": 0.0,
-            "error": "Secure QR missing",
+            "valid": None,
+            "error": "QR code unreadable due to capture quality (glare, blur, or missing)",
+            "verification_tier": "QR_UNREADABLE",
         }
         results["aadhaar_qr_ocr_consistency"] = {
             "score": 0.0,
-            "error": "Secure QR missing",
+            "consistent": False,
+            "mismatches": ["qr_data_unavailable"],
+            "error": "QR code unreadable",
         }
-        notes.append("Aadhaar UIDAI signature validation skipped: QR missing.")
-        notes.append("Aadhaar QR-OCR consistency check skipped: QR missing.")
+        notes.append(
+            "Capture alert: QR code unreadable due to glare or blur. Recapture back of card under clear lighting for cryptographic verification."
+        )
+
+    results["verification_tier"] = verification_tier
 
     ela_full = await _safe_run(run_ela, image)
     if ela_full:
@@ -689,13 +726,27 @@ async def _finalize(
             else verh.get("error", "Verhoeff checksum failed")
         )
 
-        sig = score_input.get("aadhaar_uidai_signature", {})
-        signature_valid = sig.get("score") == 1.0
-        signature_reason = (
-            "UIDAI signature verified"
-            if signature_valid
-            else sig.get("error", "UIDAI signature invalid")
+        verification_tier = score_input.get(
+            "verification_tier",
+            check_results.get("verification_tier", "QR_VERIFIED"),
         )
+        sig = score_input.get("aadhaar_uidai_signature", {})
+        if verification_tier == "QR_VERIFIED":
+            signature_valid = sig.get("score") == 1.0
+            signature_reason = (
+                "UIDAI signature verified"
+                if signature_valid
+                else sig.get("error", "UIDAI signature invalid")
+            )
+        elif verification_tier == "QR_LEGACY":
+            signature_valid = None
+            signature_reason = "Older pre-2017 QR format without digital signature"
+        elif verification_tier == "QR_UNREADABLE":
+            signature_valid = None
+            signature_reason = "QR code unreadable due to capture quality (glare, blur, or missing)"
+        else:
+            signature_valid = sig.get("valid")
+            signature_reason = sig.get("error", "Signature not verified")
 
         cons = score_input.get("aadhaar_qr_ocr_consistency", {})
         cross_field_consistent = cons.get("score") == 1.0
@@ -749,7 +800,7 @@ async def _finalize(
         "cross_field_consistent": cross_field_consistent,
         "cross_field_mismatches": cross_field_mismatches,
     }
-    if doc_type == "PASSPORT":
+    if doc_type in ("PASSPORT", "AADHAAR"):
         validation["verification_tier"] = check_results.get("verification_tier")
 
     # Build Tampering Forensics block

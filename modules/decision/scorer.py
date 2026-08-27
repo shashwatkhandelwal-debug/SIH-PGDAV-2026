@@ -143,40 +143,87 @@ def compute_score(
             }
     else:
         # AADHAAR
-        # 1. Checksum Failure
+        # 1. Checksum Failure (Verhoeff)
         checksum_fail = 0.0
         if "aadhaar_verhoeff" in check_results:
             res = check_results["aadhaar_verhoeff"]
             if res is not None and res.get("score") == 0.0:
                 checksum_fail = 1.0
 
-        # 2. Signature Failure
+        # Determine verification tier
+        verification_tier = check_results.get(
+            "verification_tier",
+            check_results.get("aadhaar_uidai_signature", {}).get(
+                "verification_tier", "QR_VERIFIED"
+            ),
+        )
+
+        # 2. Cryptographic Signature Failure
+        # Only evaluated in QR_VERIFIED tier (when a digital signature block is present).
         signature_fail = 0.0
-        if "aadhaar_uidai_signature" in check_results:
-            res = check_results["aadhaar_uidai_signature"]
-            if res is not None and res.get("score") == 0.0:
-                signature_fail = 1.0
+        if verification_tier == "QR_VERIFIED":
+            if "aadhaar_uidai_signature" in check_results:
+                res = check_results["aadhaar_uidai_signature"]
+                if res is not None and res.get("score") == 0.0:
+                    signature_fail = 1.0
 
         # 3. Cross-field Inconsistency
+        # Evaluated in QR_VERIFIED and QR_LEGACY tiers where QR fields are available.
         cross_field_inconsistent = 0.0
-        if "aadhaar_qr_ocr_consistency" in check_results:
-            res = check_results["aadhaar_qr_ocr_consistency"]
-            if res is not None and res.get("score") == 0.0:
-                cross_field_inconsistent = 1.0
+        if verification_tier in ("QR_VERIFIED", "QR_LEGACY"):
+            if "aadhaar_qr_ocr_consistency" in check_results:
+                res = check_results["aadhaar_qr_ocr_consistency"]
+                if res is not None and res.get("score") == 0.0:
+                    cross_field_inconsistent = 1.0
 
         term_checksum = 30.0 * checksum_fail
         term_signature = 30.0 * signature_fail
         term_cross_field = 20.0 * cross_field_inconsistent
 
-        raw_score = term_checksum + term_signature + term_cross_field + term_ela
-        overall_score = min(100.0, max(0.0, raw_score))
+        if verification_tier == "QR_LEGACY":
+            # QR_LEGACY Tier:
+            # Pre-2017 XML format QR card with structural absence of an RSA digital signature block.
+            # Cryptographic signature check is not applicable (signature_valid = null).
+            # Cross-field consistency (XML QR fields vs Front OCR) is available and validated.
+            # Available terms: Verhoeff (weight 30) + Cross-field (weight 20) + ELA (weight 20) = sum 70.
+            # Rescale available terms to 100 using the 100/70 multiplier (mirroring Passport CHIP_UNAVAILABLE).
+            raw_score = term_checksum + term_cross_field + term_ela
+            overall_score = min(100.0, max(0.0, raw_score * (100.0 / 70.0)))
 
-        component_breakdown = {
-            "checksum_contribution": round(term_checksum, 2),
-            "signature_contribution": round(term_signature, 2),
-            "cross_field_contribution": round(term_cross_field, 2),
-            "ela_contribution": round(term_ela, 2),
-        }
+            component_breakdown = {
+                "checksum_contribution": round(term_checksum * (100.0 / 70.0), 2),
+                "cross_field_contribution": round(
+                    term_cross_field * (100.0 / 70.0), 2
+                ),
+                "ela_contribution": round(term_ela * (100.0 / 70.0), 2),
+            }
+        elif verification_tier == "QR_UNREADABLE":
+            # QR_UNREADABLE Tier:
+            # Capture-quality failure: QR unreadable due to glare, motion blur, angle, or damage.
+            # Signature is marked signature_valid = null (lack of evidence, not proof of tampering).
+            # Because QR could not be decoded, both signature (30) and cross-field (20) checks are unavailable.
+            # Available terms: Verhoeff (weight 30) + ELA (weight 20) = sum 50.
+            # Rescaled using 100/50 = 2.0 multiplier so that genuine physical/mathematical tampering
+            # (e.g. invalid Verhoeff + ELA anomaly) reaches FLAGGED (100.0) rather than being artificially capped low.
+            raw_score = term_checksum + term_ela
+            overall_score = min(100.0, max(0.0, raw_score * (100.0 / 50.0)))
+
+            component_breakdown = {
+                "checksum_contribution": round(term_checksum * (100.0 / 50.0), 2),
+                "ela_contribution": round(term_ela * (100.0 / 50.0), 2),
+            }
+        else:
+            # QR_VERIFIED Tier (Standard Secure QR):
+            # All four checks active: Verhoeff (30) + Signature (30) + Cross-field (20) + ELA (20) = 100.
+            raw_score = term_checksum + term_signature + term_cross_field + term_ela
+            overall_score = min(100.0, max(0.0, raw_score))
+
+            component_breakdown = {
+                "checksum_contribution": round(term_checksum, 2),
+                "signature_contribution": round(term_signature, 2),
+                "cross_field_contribution": round(term_cross_field, 2),
+                "ela_contribution": round(term_ela, 2),
+            }
 
     # Determine status based on thresholds
     if overall_score <= 30.0:

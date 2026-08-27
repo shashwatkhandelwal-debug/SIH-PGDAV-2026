@@ -214,31 +214,54 @@ def _screen_aadhaar(front_img: np.ndarray, back_img: np.ndarray) -> dict:
         "uid": uid,
     }
 
-    # 2. Cryptographic signature check on QR
+    # 2. Cryptographic signature check on QR and verification tier
     qr_region = None
     if not qr.get("error"):
         qr_region = qr.get("region")
-        sig_result = verify_uidai_signature(qr["raw_payload"], qr["signature"])
-        results["aadhaar_uidai_signature"] = {
-            "score": 1.0 if sig_result["valid"] else 0.0,
-            **sig_result,
-        }
+        is_xml_legacy = (qr.get("format") == "xml") and (not qr.get("signature"))
+        if is_xml_legacy:
+            verification_tier = "QR_LEGACY"
+            results["aadhaar_uidai_signature"] = {
+                "score": 1.0,
+                "valid": None,
+                "error": "Older pre-2017 QR format without digital signature",
+                "verification_tier": "QR_LEGACY",
+            }
+        else:
+            sig_result = verify_uidai_signature(
+                qr.get("raw_payload", b""), qr.get("signature", b"")
+            )
+            is_valid = bool(sig_result and sig_result.get("valid"))
+            verification_tier = "QR_VERIFIED"
+            results["aadhaar_uidai_signature"] = {
+                "score": 1.0 if is_valid else 0.0,
+                "valid": is_valid,
+                **(sig_result or {}),
+                "verification_tier": "QR_VERIFIED",
+            }
+
         # 3. Front OCR vs QR cross-check
-        consistency = check_qr_ocr_consistency(qr["fields"], ocr)
+        consistency = check_qr_ocr_consistency(qr.get("fields", {}), ocr)
         results["aadhaar_qr_ocr_consistency"] = {
-            "score": 1.0 if consistency["consistent"] else 0.0,
+            "score": 1.0 if consistency.get("consistent") else 0.0,
             **consistency,
         }
     else:
+        verification_tier = "QR_UNREADABLE"
         results["aadhaar_uidai_signature"] = {
             "score": 0.0,
-            "error": "Aadhaar Secure QR not detected on front or back",
+            "valid": None,
+            "error": "QR code unreadable due to capture quality (glare, blur, or missing)",
+            "verification_tier": "QR_UNREADABLE",
         }
         results["aadhaar_qr_ocr_consistency"] = {
             "score": 0.0,
-            "error": "Secure QR missing",
+            "consistent": False,
+            "mismatches": ["qr_data_unavailable"],
+            "error": "QR code unreadable",
         }
 
+    results["verification_tier"] = verification_tier
     results["expiry_valid"] = {"score": 1.0}  # Aadhaar has no expiry
 
     # 4. Forensics (Run ELA on both images)
