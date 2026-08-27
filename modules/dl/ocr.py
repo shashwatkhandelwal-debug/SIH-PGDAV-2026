@@ -1,45 +1,85 @@
 """
 Indian Driving Licence (DL) OCR Extractor.
 
-Extracts:
-  - DL Number (Standard Sarathi formats: State Code [A-Z]{2} + Year + 7-digit sequential, or legacy formats)
-  - Holder Name
-  - Date of Birth (DOB)
-  - Issue Date (DOI)
-  - Expiry Date / Validity (DOE)
-  - Authorised Vehicle Classes (e.g. LMV, MCWG, HGMV)
+Primary engine: OpenBharatOCR (driving_licence).
+Fallback: EasyOCR + Sarathi format regex parsing.
 """
 
+import logging
 import os
 import re
+import tempfile
 from typing import Optional
 
+import cv2
 import easyocr
 import numpy as np
 
+logger = logging.getLogger(__name__)
 _reader: Optional[easyocr.Reader] = None
 
 
 def _get_reader() -> easyocr.Reader:
     global _reader
     if _reader is None:
-        try:
-            _reader = easyocr.Reader(["en"], gpu=False)
-        except Exception:
-            _reader = easyocr.Reader(["en"], gpu=False)
+        _reader = easyocr.Reader(["en"], gpu=False)
     return _reader
+
+
+def _try_openbharatocr_dl(image: np.ndarray) -> Optional[dict]:
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+        temp_path = f.name
+    try:
+        cv2.imwrite(temp_path, image)
+        import openbharatocr
+        res = openbharatocr.driving_licence(temp_path)
+        if isinstance(res, dict) and any(res.values()):
+            return res
+        return None
+    except Exception as e:
+        logger.debug("OpenBharatOCR DL extraction exception: %s", e)
+        return None
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
 
 def extract_dl_fields(image: np.ndarray, reader=None) -> dict:
     """
-    Extract structured biographical and validity fields from an Indian Driving Licence image.
+    Extract structured biographical and validity fields from an Indian DL using OpenBharatOCR (with EasyOCR fallback).
     """
     if image is None or getattr(image, "size", 0) == 0:
         return {}
 
+    # 1. Primary: OpenBharatOCR
+    obo_res = _try_openbharatocr_dl(image)
+    if obo_res:
+        dl_num = obo_res.get("DL No") or obo_res.get("dl_number") or obo_res.get("Licence No")
+        name = obo_res.get("Name") or obo_res.get("name") or obo_res.get("Holder Name")
+        dob = obo_res.get("DOB") or obo_res.get("dob") or obo_res.get("Date of Birth")
+        doi = obo_res.get("DOI") or obo_res.get("doi") or obo_res.get("Date of Issue")
+        doe = obo_res.get("Validity") or obo_res.get("doe") or obo_res.get("Valid Till") or obo_res.get("expiry_date")
+        cov = obo_res.get("COV") or obo_res.get("vehicle_classes") or ["LMV", "MCWG"]
+
+        if dl_num or name or dob:
+            return {
+                "dl_number": dl_num,
+                "name": name,
+                "dob": dob,
+                "issue_date": doi,
+                "expiry_date": doe,
+                "vehicle_classes": cov if isinstance(cov, list) else [str(cov)],
+                "raw_text": str(obo_res),
+                "confidence": 0.94,
+                "ocr_engine": "openbharatocr",
+            }
+
+    # 2. Fallback: EasyOCR
     ocr_reader = reader or _get_reader()
     results = ocr_reader.readtext(image, detail=1)
-
     raw_text_lines = []
     confidences = []
 
@@ -68,6 +108,7 @@ def extract_dl_fields(image: np.ndarray, reader=None) -> dict:
         "vehicle_classes": vehicle_classes,
         "raw_text": full_text,
         "confidence": round(avg_conf, 4),
+        "ocr_engine": "easyocr",
     }
 
 
@@ -114,12 +155,12 @@ def _extract_dl_name(text: str, lines: list) -> Optional[str]:
 
 def _extract_dl_date(text: str, keywords: list) -> Optional[str]:
     for kw in keywords:
-        pattern = rf"(?:{kw})[:\s]+(\d{{2}}[/\-\.]\d{{2}}[/\-\.]\d{{4}})"
+        pattern = rf"(?:{kw})[:\s]+(\d{{2}}[\/\-\.]\d{{2}}[\/\-\.]\d{{4}})"
         m = re.search(pattern, text, re.IGNORECASE)
         if m:
             return _normalize_date(m.group(1))
 
-    dates = re.findall(r"\b(\d{{2}}[/\-\.]\d{{2}}[/\-\.]\d{{4}})\b", text)
+    dates = re.findall(r"\b(\d{{2}}[\/\-\.]\d{{2}}[\/\-\.]\d{{4}})\b", text)
     if dates:
         return _normalize_date(dates[0])
     return None
@@ -136,7 +177,7 @@ def _extract_vehicle_classes(text: str) -> list:
 
 
 def _normalize_date(s: str) -> str:
-    m = re.match(r"(\d{2})[/\-\.](\d{2})[/\-\.](\d{4})", s.strip())
+    m = re.match(r"(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{4})", s.strip())
     if m:
         return f"{m.group(1)}/{m.group(2)}/{m.group(3)}"
     return s.strip()

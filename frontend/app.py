@@ -131,44 +131,28 @@ st.markdown(
 def _render_image_input(
     label: str, key_suffix: str, scan_type: str = "doc"
 ) -> Optional[np.ndarray]:
-    """Helper to render native camera snap or in-browser video feed."""
-    up_file = st.file_uploader(
-        f"📸 Tap to Snap {label} (Native Phone Camera)",
-        type=["jpg", "jpeg", "png"],
-        key=f"up_{key_suffix}",
-        help="On mobile, tapping this directly launches your phone's native camera with laser autofocus.",
-    )
-    up_img = None
-    if up_file:
-        pil_img = Image.open(up_file)
-        up_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+    """
+    Direct one-tap camera capture widget.
+    Takes photo directly, displays instant visual preview, and automatically passes to OpenBharatOCR & PyZBar.
+    """
+    cam_key = f"cam_{key_suffix}"
+    cls_name = "qr-scan-container" if scan_type == "qr" else "doc-scan-container"
+    st.markdown(f'<div class="{cls_name}">', unsafe_allow_html=True)
+    cam_file = st.camera_input(f"📷 Snap {label}", key=cam_key)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    with st.expander(f"🖥️ Or Use In-Browser Live Webcam ({label})", expanded=False):
-        cam_key = f"cam_{key_suffix}"
-        st_key = f"start_{key_suffix}"
-
-        is_active = st.session_state.get(st_key, False)
-        btn_label = "⏹ Close In-Browser Feed" if is_active else "📷 Open In-Browser Live Feed"
-        if st.button(btn_label, key=f"btn_{key_suffix}"):
-            st.session_state[st_key] = not is_active
-            st.rerun()
-
-        cam_img = None
-        if st.session_state.get(st_key, False):
-            cls_name = "qr-scan-container" if scan_type == "qr" else "doc-scan-container"
-            st.markdown(f'<div class="{cls_name}">', unsafe_allow_html=True)
-            cam_file = st.camera_input(f"Capture {label}", key=cam_key, label_visibility="collapsed")
-            st.markdown("</div>", unsafe_allow_html=True)
-            if cam_file:
-                pil_img = Image.open(cam_file)
-                cam_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-
-    selected = up_img if up_img is not None else cam_img
-    if selected is not None:
+    if cam_file is not None:
+        pil_img = Image.open(cam_file)
+        img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
         from shared.preprocess import enhance_and_deblur_document
-        selected = enhance_and_deblur_document(selected)
-        st.image(cv2.cvtColor(selected, cv2.COLOR_BGR2RGB), caption=f"Selected: {label} (Auto-Enhanced)", use_container_width=True)
-    return selected
+        enhanced = enhance_and_deblur_document(img)
+        st.image(
+            cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB),
+            caption=f"Captured: {label} (Preview)",
+            use_container_width=True,
+        )
+        return enhanced
+    return None
 
 
 # ── Screening Pipelines ─────────────────────────────────────────────────────────

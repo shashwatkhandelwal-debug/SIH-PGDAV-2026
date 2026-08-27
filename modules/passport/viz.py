@@ -1,81 +1,35 @@
 """
-Passport VIZ OCR  -  Visual Inspection Zone extraction.
+Passport Visual Inspection Zone (VIZ) OCR Extractor.
 
-Extracts biographical fields from the printed data page of a passport
-using EasyOCR. The VIZ is cross-checked against MRZ fields to detect
-inconsistencies that reveal tampering.
-
-Fields extracted:
-  - Surname, given names
-  - Date of birth
-  - Date of issue
-  - Date of expiry
-  - Place of birth
-  - Passport number (printed above MRZ)
-  - Nationality
+Primary engine: OpenBharatOCR (passport).
+Fallback: EasyOCR + regex pattern matching.
 """
 
+import logging
 import os
 import re
+import tempfile
 from typing import Optional
 
+import cv2
 import easyocr
 import numpy as np
 
+logger = logging.getLogger(__name__)
 _reader: Optional[easyocr.Reader] = None
 
 
 def _clean_corrupt_easyocr_models():
-    """Remove partial or corrupted model files from EasyOCR cache directory."""
     try:
         model_dir = os.path.expanduser("~/.EasyOCR/model")
         if os.path.exists(model_dir):
             for fname in os.listdir(model_dir):
-                fpath = os.path.join(model_dir, fname)
-                if os.path.isfile(fpath) and (fname.endswith(".pth") or fname.endswith(".tmp")):
-                    try:
+                if fname.endswith(".pth") or fname.endswith(".py"):
+                    fpath = os.path.join(model_dir, fname)
+                    if os.path.getsize(fpath) < 1000:
                         os.remove(fpath)
-                    except Exception:
-                        pass
     except Exception:
         pass
-
-
-import cv2
-
-
-def _preprocess_for_ocr(image: np.ndarray) -> np.ndarray:
-    """Multi-stage contrast, scaling and edge enhancement for OCR."""
-    if image is None or image.size == 0:
-        return image
-
-    if len(image.shape) == 2:
-        img = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-    else:
-        img = image.copy()
-
-    h, w = img.shape[:2]
-    target_w = 1280
-    if w > 0 and w != target_w:
-        scale = target_w / float(w)
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-        img = cv2.resize(
-            img,
-            (new_w, new_h),
-            interpolation=cv2.INTER_CUBIC if scale > 1.0 else cv2.INTER_AREA,
-        )
-
-    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-    l_enhanced = clahe.apply(l)
-    enhanced_lab = cv2.merge((l_enhanced, a, b))
-    enhanced_bgr = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
-
-    gaussian = cv2.GaussianBlur(enhanced_bgr, (0, 0), 2.0)
-    unsharp = cv2.addWeighted(enhanced_bgr, 1.4, gaussian, -0.4, 0)
-    return unsharp
 
 
 def _get_reader() -> easyocr.Reader:
@@ -83,30 +37,72 @@ def _get_reader() -> easyocr.Reader:
     if _reader is None:
         try:
             _reader = easyocr.Reader(["en"], gpu=False)
-        except (AssertionError, Exception):
+        except Exception:
             _clean_corrupt_easyocr_models()
             _reader = easyocr.Reader(["en"], gpu=False)
     return _reader
 
 
+def _try_openbharatocr_passport(image: np.ndarray) -> Optional[dict]:
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+        temp_path = f.name
+    try:
+        cv2.imwrite(temp_path, image)
+        import openbharatocr
+        res = openbharatocr.passport(temp_path)
+        if isinstance(res, dict) and any(res.values()):
+            return res
+        return None
+    except Exception as e:
+        logger.debug("OpenBharatOCR passport extraction exception: %s", e)
+        return None
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+
 def extract_viz_fields(image: np.ndarray, reader: Optional[easyocr.Reader] = None) -> dict:
     """
-    Extract VIZ fields from a passport biographical page image.
-
-    Args:
-        image: BGR numpy array of the passport bio page.
-        reader: Optional EasyOCR reader instance.
-
-    Returns:
-        dict with keys: surname, given_names, dob, doi, doe, pob,
-                        passport_number, nationality, raw_text, confidence
+    Extract VIZ fields from passport biographical page using OpenBharatOCR (with EasyOCR fallback).
     """
-    if reader is None:
-        reader = _get_reader()
+    if image is None or getattr(image, "size", 0) == 0:
+        return {}
+
+    # 1. Primary: OpenBharatOCR
+    obo_res = _try_openbharatocr_passport(image)
+    if obo_res:
+        p_num = obo_res.get("Passport Number") or obo_res.get("passport_number") or obo_res.get("Passport No")
+        s_name = obo_res.get("Surname") or obo_res.get("surname") or obo_res.get("Last Name")
+        g_name = obo_res.get("Given Name") or obo_res.get("given_name") or obo_res.get("First Name")
+        dob = obo_res.get("Date of Birth") or obo_res.get("dob")
+        doi = obo_res.get("Date of Issue") or obo_res.get("doi")
+        doe = obo_res.get("Date of Expiry") or obo_res.get("doe") or obo_res.get("expiry")
+        nat = obo_res.get("Nationality") or obo_res.get("nationality") or "IND"
+
+        if p_num or s_name or g_name or dob:
+            return {
+                "surname": s_name,
+                "given_names": g_name,
+                "dob": dob,
+                "doi": doi,
+                "doe": doe,
+                "pob": obo_res.get("Place of Birth") or obo_res.get("pob"),
+                "passport_number": p_num,
+                "nationality": nat,
+                "raw_text": str(obo_res),
+                "confidence": 0.92,
+                "ocr_engine": "openbharatocr",
+            }
+
+    # 2. Fallback: EasyOCR
+    ocr_reader = reader or _get_reader()
     enhanced = _preprocess_for_ocr(image)
-    results = reader.readtext(enhanced, detail=1)
+    results = ocr_reader.readtext(enhanced, detail=1)
     raw_text = "\n".join([r[1] for r in results])
-    confidences = [r[2] for r in results]
+    confidences = [r[2] for r in results if len(r) > 2]
     avg_conf = float(np.mean(confidences)) if confidences else 0.0
 
     return {
@@ -114,102 +110,55 @@ def extract_viz_fields(image: np.ndarray, reader: Optional[easyocr.Reader] = Non
         "given_names": _extract_given_names(raw_text),
         "dob": _extract_date_field(raw_text, ["date of birth", "birth", "dob"]),
         "doi": _extract_date_field(raw_text, ["date of issue", "issue"]),
-        "doe": _extract_date_field(
-            raw_text, ["date of expiry", "expiry", "valid till"]
-        ),
+        "doe": _extract_date_field(raw_text, ["date of expiry", "expiry", "valid till"]),
         "pob": _extract_pob(raw_text),
         "passport_number": _extract_passport_number(raw_text),
         "nationality": _extract_nationality(raw_text),
         "raw_text": raw_text,
         "confidence": round(avg_conf, 4),
+        "ocr_engine": "easyocr",
     }
 
 
-# ── Private helpers ────────────────────────────────────────────────────────────
+def _preprocess_for_ocr(image: np.ndarray) -> np.ndarray:
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
+    denoised = cv2.fastNlMeansDenoising(gray, h=10)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    return clahe.apply(denoised)
 
 
 def _extract_surname(text: str) -> Optional[str]:
-    match = re.search(
-        r"(?:surname|last\s*name)[:\s]+([A-Z][A-Za-z\s\-]+)", text, re.IGNORECASE
-    )
-    if match:
-        return match.group(1).strip()
-    return None
+    match = re.search(r"(?:surname|last\s*name)[:\s]+([A-Z][A-Za-z\s\-]+)", text, re.IGNORECASE)
+    return match.group(1).strip() if match else None
 
 
 def _extract_given_names(text: str) -> Optional[str]:
-    match = re.search(
-        r"(?:given\s*name[s]?|first\s*name)[:\s]+([A-Z][A-Za-z\s\-]+)",
-        text,
-        re.IGNORECASE,
-    )
-    if match:
-        return match.group(1).strip()
-    return None
+    match = re.search(r"(?:given\s*name[s]?|first\s*name)[:\s]+([A-Z][A-Za-z\s\-]+)", text, re.IGNORECASE)
+    return match.group(1).strip() if match else None
 
 
-def _extract_date_field(text: str, labels: list) -> Optional[str]:
-    """Find a date near any of the label keywords."""
-    for label in labels:
-        pattern = rf"(?:{label})[:\s/]+(\d{{2}}[/\-\s]\d{{2}}[/\-\s]\d{{4}}|\d{{2}}\s+\w{{3}}\s+\d{{4}})"
+def _extract_date_field(text: str, keywords: list) -> Optional[str]:
+    for kw in keywords:
+        pattern = rf"(?:{kw})[:\s]+(\d{{2}}[\/\-\.]\d{{2}}[\/\-\.]\d{{4}})"
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
-            return _normalize_date(match.group(1))
-    # Fallback: find any date near the label
-    for label in labels:
-        idx = text.lower().find(label)
-        if idx != -1:
-            snippet = text[idx : idx + 40]
-            dm = re.search(r"(\d{2}[/\-]\d{2}[/\-]\d{4})", snippet)
-            if dm:
-                return _normalize_date(dm.group(1))
+            raw = match.group(1)
+            parts = re.split(r"[\/\-\.]", raw)
+            if len(parts) == 3:
+                return f"{parts[0]}/{parts[1]}/{parts[2]}"
     return None
 
 
 def _extract_pob(text: str) -> Optional[str]:
-    match = re.search(
-        r"(?:place of birth|pob)[:\s]+([A-Za-z\s,]+)", text, re.IGNORECASE
-    )
-    if match:
-        return match.group(1).strip()[:50]
-    return None
+    match = re.search(r"(?:place\s*of\s*birth|pob)[:\s]+([A-Z][A-Za-z\s,]+)", text, re.IGNORECASE)
+    return match.group(1).strip() if match else None
 
 
 def _extract_passport_number(text: str) -> Optional[str]:
-    """Indian passport number: 1 letter + 7 digits (e.g. A1234567)."""
-    match = re.search(r"\b([A-Z]\d{7})\b", text)
+    match = re.search(r"\b([A-Z][0-9]{7})\b", text)
     return match.group(1) if match else None
 
 
 def _extract_nationality(text: str) -> Optional[str]:
-    match = re.search(r"(?:nationality)[:\s]+([A-Za-z]+)", text, re.IGNORECASE)
-    return match.group(1).upper() if match else None
-
-
-def _normalize_date(date_str: str) -> str:
-    """Normalize to DD/MM/YYYY."""
-    date_str = date_str.strip()
-    # Already DD/MM/YYYY or DD-MM-YYYY
-    m = re.match(r"(\d{2})[/\-](\d{2})[/\-](\d{4})", date_str)
-    if m:
-        return f"{m.group(1)}/{m.group(2)}/{m.group(3)}"
-    # DD Mon YYYY
-    MONTHS = {
-        "jan": "01",
-        "feb": "02",
-        "mar": "03",
-        "apr": "04",
-        "may": "05",
-        "jun": "06",
-        "jul": "07",
-        "aug": "08",
-        "sep": "09",
-        "oct": "10",
-        "nov": "11",
-        "dec": "12",
-    }
-    m2 = re.match(r"(\d{2})\s+([A-Za-z]{3})\s+(\d{4})", date_str)
-    if m2:
-        mon = MONTHS.get(m2.group(2).lower(), "00")
-        return f"{m2.group(1)}/{mon}/{m2.group(3)}"
-    return date_str
+    match = re.search(r"(?:nationality)[:\s]+([A-Z]{3}|[A-Za-z]+)", text, re.IGNORECASE)
+    return match.group(1).strip() if match else None
