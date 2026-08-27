@@ -797,10 +797,7 @@ with tab_screening:
         ["AADHAAR", "PASSPORT", "VISA", "DRIVING LICENCE", "BORDER PERMIT", "GENERIC NATIONAL ID"],
         horizontal=True,
     )
-
-    if st.session_state.last_doc_type != doc_type:
-        st.session_state.last_doc_type = doc_type
-        st.rerun()
+    st.session_state.last_doc_type = doc_type
 
     st.divider()
 
