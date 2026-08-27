@@ -1,4 +1,56 @@
 
+// ── Dedicated Live Face Biometrics Logic ──────────────────────────────────────
+let globalLiveFaceFile = null;
+
+function handleBioFaceFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    globalLiveFaceFile = file;
+    capturedFiles["live_face"] = file;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const preview = document.getElementById("bio-face-preview");
+        if (preview) {
+            preview.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`;
+        }
+        const badge = document.getElementById("bio-status-badge");
+        if (badge) {
+            badge.textContent = "ENROLLED & ACTIVE";
+            badge.className = "font-mono text-emerald-400 font-bold";
+        }
+        const dot = document.getElementById("face-enrolled-dot");
+        if (dot) {
+            dot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+        }
+        const clearBtn = document.getElementById("btn-clear-bio-face");
+        if (clearBtn) clearBtn.classList.remove("hidden");
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearBioFace() {
+    globalLiveFaceFile = null;
+    delete capturedFiles["live_face"];
+    const preview = document.getElementById("bio-face-preview");
+    if (preview) {
+        preview.innerHTML = `<i class="fa-solid fa-user text-4xl mb-2 text-slate-600"></i><span class="text-xs font-semibold text-slate-400">No Face Captured</span>`;
+    }
+    const badge = document.getElementById("bio-status-badge");
+    if (badge) {
+        badge.textContent = "NOT ENROLLED";
+        badge.className = "font-mono text-slate-500 font-bold";
+    }
+    const dot = document.getElementById("face-enrolled-dot");
+    if (dot) {
+        dot.className = "w-2 h-2 rounded-full bg-slate-600";
+    }
+    const clearBtn = document.getElementById("btn-clear-bio-face");
+    if (clearBtn) clearBtn.classList.add("hidden");
+}
+
+
 let inlineQrScanner = null;
 let isInlineScanning = false;
 
@@ -226,6 +278,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function switchTab(tabId) {
     document.getElementById("tab-screen").classList.add("hidden");
+    document.getElementById("tab-face-bio").classList.add("hidden");
     document.getElementById("tab-audit-view").classList.add("hidden");
     document.getElementById("tab-watchlist-view").classList.add("hidden");
     document.getElementById("tab-qr-live").classList.add("hidden");
@@ -240,6 +293,10 @@ function switchTab(tabId) {
         document.getElementById("tab-qr-live").classList.remove("hidden");
         document.getElementById("tab-btn-qr-live").classList.add("bg-emerald-500", "text-slate-950");
         document.getElementById("tab-btn-qr-live").classList.remove("text-slate-400");
+    } else if (tabId === "face-bio") {
+        document.getElementById("tab-face-bio").classList.remove("hidden");
+        document.getElementById("tab-btn-face-bio").classList.add("bg-emerald-500", "text-slate-950");
+        document.getElementById("tab-btn-face-bio").classList.remove("text-slate-400");
     } else if (tabId === "screen") {
         document.getElementById("tab-screen").classList.remove("hidden");
         document.getElementById("tab-btn-screen").classList.add("bg-emerald-500", "text-slate-950");

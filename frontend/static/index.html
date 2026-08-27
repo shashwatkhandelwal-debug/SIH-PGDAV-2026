@@ -63,10 +63,14 @@
     <div class="max-w-5xl mx-auto px-4 mt-4">
         <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800 space-x-1">
             <button onclick="switchTab('screen')" id="tab-btn-screen" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all bg-emerald-500 text-slate-950 shadow-md">
-                <i class="fa-solid fa-id-card"></i> <span>Screen Document</span>
+                <i class="fa-solid fa-id-card"></i> <span>Screening</span>
+            </button>
+            <button onclick="switchTab('face-bio')" id="tab-btn-face-bio" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
+                <i class="fa-solid fa-camera-retro text-teal-400"></i> <span>Live Face</span>
+                <span id="face-enrolled-dot" class="w-2 h-2 rounded-full bg-slate-600"></span>
             </button>
             <button onclick="switchTab('audit')" id="tab-btn-audit" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
-                <i class="fa-solid fa-clipboard-list"></i> <span>Audit Trail</span>
+                <i class="fa-solid fa-clipboard-list"></i> <span>Audit</span>
             </button>
             <button onclick="switchTab('watchlist')" id="tab-btn-watchlist" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
                 <i class="fa-solid fa-shield-halved"></i> <span>Watchlist</span>
@@ -110,19 +114,7 @@
                 <!-- Dynamically populated based on active doc_type -->
             </div>
 
-            <!-- Optional Live Traveler Face Verification -->
-            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-camera text-slate-400"></i>
-                        <span class="text-sm font-semibold text-slate-300">Live Face Verification (Optional)</span>
-                    </div>
-                    <span class="text-xs text-slate-500">Cross-checks document photo against live face</span>
-                </div>
-                <div id="face-capture-card">
-                    <!-- Face capture widget -->
-                </div>
-            </div>
+
 
             <!-- Action Button -->
             <button id="btn-screen-submit" onclick="submitScreening()" class="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-base shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-3 transition-all active:scale-[0.98]">
@@ -255,6 +247,43 @@
             </div>
         </section>
 
+        
+        <!-- TAB: DEDICATED LIVE FACE BIOMETRICS WINDOW -->
+        <section id="tab-face-bio" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-user-shield text-teal-400"></i> Traveler Biometric Face Verification
+                        </h2>
+                        <p class="text-xs text-slate-400">Snap traveler face once. The system automatically cross-checks it against document photos and checks the cross-visit Identity Graph across all screenings.</p>
+                    </div>
+                </div>
+
+                <!-- Selfie Capture Card -->
+                <div class="max-w-sm mx-auto bg-slate-950 rounded-2xl border border-slate-800 p-4 flex flex-col items-center text-center">
+                    <div id="bio-face-preview" class="w-40 h-48 rounded-2xl border-2 border-dashed border-teal-500/40 bg-slate-900 flex flex-col items-center justify-center text-slate-500 overflow-hidden relative mb-4">
+                        <i class="fa-solid fa-user text-4xl mb-2 text-slate-600"></i>
+                        <span class="text-xs font-semibold text-slate-400">No Face Captured</span>
+                    </div>
+                    <label class="cursor-pointer w-full py-3 px-4 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20 active:scale-95 transition-all">
+                        <i class="fa-solid fa-camera"></i>
+                        <span>Snap Live Selfie (Front Camera)</span>
+                        <input type="file" accept="image/*" capture="user" class="hidden" onchange="handleBioFaceFile(event)">
+                    </label>
+                    <button type="button" id="btn-clear-bio-face" onclick="clearBioFace()" class="hidden text-xs text-rose-400 hover:text-rose-300 mt-2">
+                        <i class="fa-solid fa-trash"></i> Remove Enrolled Face
+                    </button>
+                </div>
+
+                <!-- Biometrics Status Note -->
+                <div id="bio-enrollment-status" class="mt-4 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+                    <span>Biometric Status:</span>
+                    <span id="bio-status-badge" class="font-mono text-slate-500 font-bold">NOT ENROLLED</span>
+                </div>
+            </div>
+        </section>
+
         <!-- TAB 2: AUDIT TRAIL -->
         <section id="tab-audit-view" class="hidden space-y-4">
             <div class="flex items-center justify-between">
@@ -285,6 +314,6 @@
 
     </main>
 
-    <script src="/static/app.js?v=4"></script>
+    <script src="/static/app.js?v=5"></script>
 </body>
 </html>

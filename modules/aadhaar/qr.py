@@ -318,6 +318,18 @@ def _parse_xml_format(text: str, raw: bytes) -> dict:
 # ── Secure QR (post-2017) ──────────────────────────────────────────────────────
 
 
+def parse_secure_qr_payload(data) -> dict:
+    """Parse Aadhaar Secure QR payload (either decimal string, XML string, or raw bytes)."""
+    if isinstance(data, str):
+        data_str = data.strip()
+        if data_str.startswith("<"):
+            return _parse_xml_format(data_str, data_str.encode("utf-8"))
+        return _parse_secure_qr_decimal(data_str)
+    elif isinstance(data, (bytes, bytearray)):
+        return _parse_secure_qr_bytes(bytes(data))
+    return {"error": "invalid_payload_type", "fields": {}}
+
+
 def _parse_secure_qr_decimal(decimal_str: str) -> dict:
     """Convert base-10 Secure QR string → bytes → gzip → fields."""
     try:
