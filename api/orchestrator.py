@@ -1043,12 +1043,16 @@ async def _finalize(
         region_checked = "Visa Stamp"
 
     heatmap_b64 = None
-    if ela_full.get("heatmap") is not None:
+    if isinstance(ela_full, dict) and ela_full.get("heatmap") is not None:
         try:
             _, h_buf = cv2.imencode(".jpg", ela_full["heatmap"])
             heatmap_b64 = base64.b64encode(h_buf).decode("utf-8")
         except Exception:
             pass
+
+    exif_suspicious = bool(isinstance(exif_data, dict) and exif_data.get("suspicious", False))
+    if exif_suspicious and isinstance(exif_data, dict):
+        notes.append(f"EXIF forensics alert: {', '.join(exif_data.get('flags', []))}")
 
     tampering_forensics = {
         "full_doc_anomaly_score": full_doc_anomaly_score,
@@ -1056,7 +1060,7 @@ async def _finalize(
         "region_checked": region_checked,
         "heatmap_available": heatmap_b64 is not None,
         "heatmap_base64": heatmap_b64,
-        "digital_splicing_detected": ela_full.get("suspicious", False),
+        "digital_splicing_detected": ela_full.get("suspicious", False) if isinstance(ela_full, dict) else False,
         "exif_suspicious": exif_suspicious,
     }
 
