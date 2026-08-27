@@ -9,17 +9,22 @@ An AI-powered document screening platform for **land border checkpoints** - brin
 
 | Document | Checks |
 |---|---|
-| **Aadhaar** | OCR extraction · Verhoeff checksum · UIDAI QR signature (RSA) · QR↔OCR cross-check |
-| **Passport** | MRZ parsing · ICAO checksums · VIZ OCR · MRZ↔VIZ cross-check · NFC chip (BAC + Passive Auth + Active Auth) |
-| **Visa** | OCR extraction · Rule validation · Visa↔Passport binding check |
+| **Aadhaar** | OpenBharatOCR extraction · Verhoeff check digit · UIDAI RSA-2048 QR signature · QR↔OCR cross-check |
+| **Passport** | ICAO 9303 MRZ parsing · Checksum verification · VIZ OCR · MRZ↔VIZ cross-check · e-Passport NFC validation |
+| **Visa** | Visa OCR · Duration/stay rule validation · Visa↔Passport binding check |
+| **Driving Licence** | Sarathi format validation · 36 State RTO prefix audit · Expiry date verification |
+| **Border Permit** | Entry permit OCR · Active validity window · Associated ID binding check |
+| **Generic National ID** | Non-MRZ national identity card parser · EPIC format validation · Visual consistency |
+
+> Detailed OCR installation and deployment instructions: [docs/ocr_and_deployment_guide.md](docs/ocr_and_deployment_guide.md)
 
 ## Modules
 
 ```
-Module 1  →  OCR Extraction          (Aadhaar, Passport MRZ+VIZ, Visa)
+Module 1  →  OCR Extraction          (Aadhaar, Passport, Visa, DL, Permit, Generic ID)
 Module 2  →  Document Validation     (Verhoeff, ICAO checksums, rule validation, crypto verification)
-Module 3  →  Tampering Detection     (ELA, EXIF, region-restricted forensics)
-Module 4  →  Face Verification       (ArcFace embeddings, liveness, identity graph)
+Module 3  →  Tampering Detection     (4-region ELA, EXIF metadata inspection)
+Module 4  →  Face Verification       (Haar cascade face cropping, embeddings, liveness, identity graph)
 Module 5  →  Decision Layer          (Explainable weighted score + LLM plain-language summary)
 ```
 
