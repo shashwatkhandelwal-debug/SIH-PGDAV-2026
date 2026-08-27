@@ -76,7 +76,9 @@ def extract_generic_id_fields(image: np.ndarray, reader=None) -> dict:
     id_number = _extract_id_number(results, full_text)
     name = _extract_name(results)
     dob = _extract_date(full_text, ["dob", "birth", "date of birth"])
-    expiry = _extract_date(full_text, ["expiry", "valid", "valide"])
+    expiry = _extract_date(full_text, ["expiry", "valid until", "valide"])
+    if expiry == dob:
+        expiry = None
 
     return {
         "id_number": id_number,
@@ -119,17 +121,27 @@ def _extract_name(lines: list) -> Optional[str]:
     EXCLUDE = {
         "ELECTION", "COMMISSION", "IDENTITY", "CARD", "GOVERNMENT", "NATIONAL",
         "REPUBLIC", "CITIZEN", "INDIA", "BHARAT", "FATHER", "HUSBAND", "MOTHER",
-        "SEX", "AGE", "DOB", "ADDRESS", "MALE", "FEMALE", "PHOTO"
+        "SEX", "AGE", "DOB", "ADDRESS", "MALE", "FEMALE", "PHOTO", "ELECTOR",
+        "ELECTORS", "NAME"
     }
     
-    # 1. Search for explicit 'Name' / 'Elector Name' prefix
-    for line in lines:
-        m = re.search(r"(?:NAME|ELECTOR[\'S]*\s*NAME|ELECTOR)\s*[:\-\s]+\s*([A-Za-z\s\.]+)", line, re.IGNORECASE)
+    # 1. Search for explicit 'Name' / 'Elector Name' prefix with actual name attached
+    for i, line in enumerate(lines):
+        m = re.search(r"(?:ELECTOR[\'S]*\s*NAME|ELECTOR|NAME)\s*[:\-\s]+\s*([A-Za-z\s\.]+)", line, re.IGNORECASE)
         if m:
             cand = re.sub(r"[^A-Za-z\s]", "", m.group(1)).strip()
-            words = cand.split()
+            words = [w for w in cand.split() if w.upper() not in EXCLUDE]
             if len(words) >= 1 and all(len(w) >= 2 for w in words):
-                return cand
+                return " ".join(words)
+        
+        # If the line is literally just "Elector's Name :" or "Elector Name", check next line
+        if re.search(r"^(?:ELECTOR[\'S]*\s*NAME|NAME)\s*[:\-\s]*$", line.strip(), re.IGNORECASE):
+            if i + 1 < len(lines):
+                next_line = lines[i + 1]
+                cand = re.sub(r"[^A-Za-z\s]", "", next_line).strip()
+                words = [w for w in cand.split() if w.upper() not in EXCLUDE]
+                if len(words) >= 1 and all(len(w) >= 2 for w in words):
+                    return " ".join(words)
 
     # 2. Search clean alphabetic lines (reject noise symbols/Devanagari OCR artifacts)
     for line in lines:
@@ -139,8 +151,8 @@ def _extract_name(lines: list) -> Optional[str]:
         ratio = len(clean_letters) / max(1, len(line.strip()))
         if ratio < 0.75:  # Skip noisy non-Latin artifact lines
             continue
-        words = [w for w in re.findall(r"[A-Za-z]+", line) if len(w) >= 2]
-        if len(words) >= 2 and not any(w.upper() in EXCLUDE for w in words):
+        words = [w for w in re.findall(r"[A-Za-z]+", line) if len(w) >= 2 and w.upper() not in EXCLUDE]
+        if len(words) >= 2:
             return " ".join(words)
     return None
 
