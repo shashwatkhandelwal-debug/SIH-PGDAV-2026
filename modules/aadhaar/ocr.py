@@ -93,9 +93,67 @@ def _get_reader() -> easyocr.Reader:
     return _reader
 
 
+def _try_openbharatocr(image: np.ndarray) -> Optional[dict]:
+    """Attempt extraction using OpenBharatOCR library."""
+    try:
+        import tempfile
+        import openbharatocr
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            temp_path = f.name
+            cv2.imwrite(temp_path, image)
+
+        try:
+            res = openbharatocr.front_aadhaar(temp_path)
+            if isinstance(res, dict) and (res.get("Aadhaar Number") or res.get("Name") or res.get("aadhaar_number") or res.get("name")):
+                uid = res.get("Aadhaar Number") or res.get("aadhaar_number") or ""
+                uid_clean = re.sub(r"[\s\-]", "", str(uid)) if uid else None
+                name_en = res.get("Name") or res.get("name") or None
+                dob = res.get("DOB") or res.get("dob") or res.get("Date of Birth") or None
+                gender = res.get("Gender") or res.get("gender") or None
+                address = res.get("Address") or res.get("address") or None
+                name_hi = res.get("Name (Hindi)") or res.get("name_hindi") or None
+
+                return {
+                    "uid": uid_clean if (uid_clean and len(uid_clean) == 12 and uid_clean.isdigit()) else None,
+                    "name_en": name_en,
+                    "name_hi": name_hi,
+                    "dob": dob,
+                    "gender": gender,
+                    "address": address,
+                    "raw_text": str(res),
+                    "confidence": 0.95,
+                }
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+    except Exception:
+        pass
+    return None
+
+
+_nlp = None
+
+
+def _get_spacy_nlp():
+    """Lazy-load spaCy English model for Named Entity Recognition."""
+    global _nlp
+    if _nlp is None:
+        try:
+            import spacy
+            try:
+                _nlp = spacy.load("en_core_web_sm")
+            except Exception:
+                _nlp = spacy.blank("en")
+        except Exception:
+            pass
+    return _nlp
+
+
 def extract_aadhaar_fields(image: np.ndarray) -> dict:
     """
-    Extract all printed fields from an Aadhaar card image using multi-pass OCR.
+    Extract all printed fields from an Aadhaar card image using OpenBharatOCR
+    and multi-pass OCR with spaCy NER.
 
     Args:
         image: BGR numpy array of the Aadhaar card.
@@ -103,6 +161,11 @@ def extract_aadhaar_fields(image: np.ndarray) -> dict:
     Returns:
         dict with keys: uid, name_en, name_hi, dob, gender, address, raw_text, confidence
     """
+    # 1. First attempt OpenBharatOCR extraction
+    obo_result = _try_openbharatocr(image)
+    if obo_result and obo_result.get("uid") and obo_result.get("name_en"):
+        return obo_result
+
     reader = _get_reader()
 
     # Pass 1: Enhanced contrast image
@@ -138,12 +201,12 @@ def extract_aadhaar_fields(image: np.ndarray) -> dict:
         raw_text = f"{raw_text} {p2_raw_text}".strip()
 
     return {
-        "uid": uid,
-        "name_en": name_en,
-        "name_hi": name_hi,
-        "dob": dob,
-        "gender": gender,
-        "address": _extract_address(raw_text),
+        "uid": uid or (obo_result.get("uid") if obo_result else None),
+        "name_en": name_en or (obo_result.get("name_en") if obo_result else None),
+        "name_hi": name_hi or (obo_result.get("name_hi") if obo_result else None),
+        "dob": dob or (obo_result.get("dob") if obo_result else None),
+        "gender": gender or (obo_result.get("gender") if obo_result else None),
+        "address": _extract_address(raw_text) or (obo_result.get("address") if obo_result else None),
         "raw_text": raw_text,
         "confidence": round(avg_confidence, 4),
     }
@@ -153,12 +216,18 @@ def extract_aadhaar_fields(image: np.ndarray) -> dict:
 
 
 def _extract_uid(text: str) -> Optional[str]:
-    """Extract 12-digit UID, stripping spaces and common OCR letter confusions."""
-    match = re.search(r"\b(\d{4}[\s\-]?\d{4}[\s\-]?\d{4})\b", text)
+    """
+    Extract 12-digit UID from explicit 4-4-4 blocks or isolated 12-digit numbers.
+    Does NOT concatenate unrelated numeric blocks (e.g. dates or phone numbers).
+    """
+    # 1. Standard 4-4-4 formatted UID
+    match = re.search(r"\b(\d{4}[\s\-]\d{4}[\s\-]\d{4})\b", text)
     if match:
-        return re.sub(r"[\s\-]", "", match.group(1))
+        candidate = re.sub(r"[\s\-]", "", match.group(1))
+        if len(candidate) == 12 and candidate.isdigit():
+            return candidate
 
-    # Clean common OCR digit substitutions in numeric blocks
+    # 2. Clean common OCR letter-for-digit confusions in 4-4-4 patterns
     cleaned = re.sub(r"[Oo]", "0", text)
     cleaned = re.sub(r"[Il|]", "1", cleaned)
     cleaned = re.sub(
@@ -168,19 +237,17 @@ def _extract_uid(text: str) -> Optional[str]:
         ),
         cleaned,
     )
-    match = re.search(r"\b(\d{4}[\s\-]?\d{4}[\s\-]?\d{4})\b", cleaned)
+    match = re.search(r"\b(\d{4}[\s\-]\d{4}[\s\-]\d{4})\b", cleaned)
     if match:
-        return re.sub(r"[\s\-]", "", match.group(1))
+        candidate = re.sub(r"[\s\-]", "", match.group(1))
+        if len(candidate) == 12 and candidate.isdigit():
+            return candidate
 
-    # Try matching any sequence of 12 digits separated by whitespace
-    digits = re.findall(r"\d+", cleaned)
-    joined_digits = "".join(digits)
-    if len(joined_digits) == 12:
-        return joined_digits
-    if len(joined_digits) > 12:
-        for i in range(len(joined_digits) - 11):
-            cand = joined_digits[i : i + 12]
-            return cand
+    # 3. Isolated 12-digit sequence
+    match = re.search(r"\b(\d{12})\b", cleaned)
+    if match:
+        return match.group(1)
+
     return None
 
 
@@ -283,7 +350,7 @@ def _extract_name_english(
                 ):
                     return cleaned_line
 
-    # 2. Fallback: filter known stop phrases from text
+    # Prepare filtered text by removing known static headers
     filtered_text = text
     for stop_word in [
         "GOVERNMENT OF INDIA",
@@ -297,6 +364,21 @@ def _extract_name_english(
     ]:
         filtered_text = re.sub(stop_word, " ", filtered_text, flags=re.IGNORECASE)
 
+    # 2. Try spaCy NER for PERSON entities
+    nlp = _get_spacy_nlp()
+    if nlp:
+        try:
+            doc = nlp(filtered_text)
+            for ent in doc.ents:
+                if ent.label_ == "PERSON":
+                    clean_ent = re.sub(r"[^A-Za-z\s.'-]", "", ent.text).strip()
+                    ent_words = [w.upper() for w in clean_ent.split()]
+                    if len(ent_words) >= 2 and not any(w in EXCLUDE for w in ent_words):
+                        return clean_ent
+        except Exception:
+            pass
+
+    # 3. Fallback heuristic pattern matching
     words_with_case = re.findall(r"\b[A-Za-z.'-]+\b", filtered_text)
     for i in range(len(words_with_case) - 1):
         for length in [2, 3, 4]:
