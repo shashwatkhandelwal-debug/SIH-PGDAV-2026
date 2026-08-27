@@ -43,7 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_TIMEOUT_SECONDS = 10.0
+_TIMEOUT_SECONDS = 60.0
 
 # Mount static frontend
 _static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "static")
@@ -1039,7 +1039,8 @@ async def _load_image_from_upload(upload: UploadFile) -> np.ndarray:
     img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
     if img is None:
         raise HTTPException(status_code=400, detail="Invalid image file")
-    return img
+    from shared.preprocess import enhance_and_deblur_document
+    return enhance_and_deblur_document(img, max_dim=1600)
 
 
 async def _run_exif_forensics(upload: UploadFile) -> dict:
