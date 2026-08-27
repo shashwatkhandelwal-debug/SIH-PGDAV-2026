@@ -433,14 +433,9 @@ def _decode_iso(chunk: bytes) -> str:
 def _parse_delimiter_fields(signed_data: bytes) -> dict:
     """
     Parse UIDAI Secure QR fields from 0xFF-delimited signed data.
-
-    Field order after email/mobile presence indicator:
-      name, dob, gender, care_of, district, landmark, house, location,
-      pincode, postoffice, state, street, subdistrict, vtc,
-      [photo bytes...], [mobile hash 32B], [email hash 32B] before signature
-      (hashes are already excluded because we sliced signature off signed_data;
-       photo + optional email/mobile hashes may remain after VTC).
+    Dynamically aligns V1 and V2 (post-2018 Reference ID) index offsets.
     """
+    import re
     parts = _split_delimiter_fields(signed_data)
     if not parts:
         return {}
@@ -453,42 +448,62 @@ def _parse_delimiter_fields(signed_data: bytes) -> dict:
         email_mobile_flag = 0
 
     def get(i: int) -> str:
-        if i < len(parts):
+        if 0 <= i < len(parts):
             return _decode_iso(parts[i])
         return ""
 
-    # Indices 1..14 are text demographics
-    name = get(1)
-    dob = get(2)
-    gender = get(3)
-    care_of = get(4)
-    district = get(5)
-    landmark = get(6)
-    house = get(7)
-    location = get(8)
-    pincode = get(9)
-    postoffice = get(10)
-    state = get(11)
-    street = get(12)
-    subdistrict = get(13)
-    vtc = get(14)
+    # Find the Date of Birth index as the anchor
+    # DOB matches DD-MM-YYYY, DD/MM/YYYY, or YYYY-MM-DD
+    dob_idx = None
+    for idx in range(1, min(len(parts), 6)):
+        val = get(idx)
+        if re.search(r"\b\d{2}[-/]\d{2}[-/]\d{4}\b", val) or re.search(r"\b\d{4}[-/]\d{2}[-/]\d{2}\b", val):
+            dob_idx = idx
+            break
+
+    if dob_idx is None:
+        # Fallback to standard V1 offset if no date pattern found
+        dob_idx = 2
+
+    # In V2 (dob_idx == 3): parts[1] is Reference ID, parts[2] is Name, parts[3] is DOB, parts[4] is Gender
+    # In V1 (dob_idx == 2): parts[1] is Name, parts[2] is DOB, parts[3] is Gender
+    ref_id = get(1) if dob_idx > 2 else ""
+    name_idx = dob_idx - 1
+    gender_idx = dob_idx + 1
+
+    name = get(name_idx)
+    dob = get(dob_idx)
+    gender = get(gender_idx)
+    care_of = get(gender_idx + 1)
+    district = get(gender_idx + 2)
+    landmark = get(gender_idx + 3)
+    house = get(gender_idx + 4)
+    location = get(gender_idx + 5)
+    pincode = get(gender_idx + 6)
+    postoffice = get(gender_idx + 7)
+    state = get(gender_idx + 8)
+    street = get(gender_idx + 9)
+    subdistrict = get(gender_idx + 10)
+    vtc = get(gender_idx + 11)
 
     # Normalize gender to single letter / word
     g = gender.upper()[:1] if gender else ""
     gender_norm = {"M": "M", "F": "F", "T": "T"}.get(g, gender)
 
-    # Photo is typically remaining bytes after VTC delimiter until email/mobile hashes
+    # Photo is typically after VTC
     photo = None
-    if len(parts) > 15:
-        photo_bytes = parts[15]
-        # Email/mobile SHA256 hashes are 32 bytes each at the end of signed_data
-        # When they are separate delimiter fields they appear after photo
+    photo_idx = gender_idx + 12
+    if len(parts) > photo_idx:
+        photo_bytes = parts[photo_idx]
         if len(photo_bytes) > 100:
             photo = photo_bytes
 
-    # ref_id / last4 often encoded in first bytes of some versions — leave optional
+    # Extract last 4 digits from ref_id if available (ref_id starts with 4 digits)
+    uid_last4 = ref_id[:4] if (ref_id and ref_id[:4].isdigit()) else ""
+
     fields = {
         "email_mobile_flag": email_mobile_flag,
+        "ref_id": ref_id,
         "name": name,
         "dob": dob,
         "gender": gender_norm,
@@ -503,7 +518,7 @@ def _parse_delimiter_fields(signed_data: bytes) -> dict:
         "street": street,
         "subdistrict": subdistrict,
         "vtc": vtc,
-        "uid_last4": "",  # Secure QR does not contain full UID
+        "uid_last4": uid_last4,
         "has_photo": bool(photo),
     }
     return fields
