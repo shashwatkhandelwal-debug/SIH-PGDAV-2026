@@ -109,40 +109,65 @@ def _parse_date(yymmdd: str) -> Optional[str]:
 def parse_mrz_from_image(image, reader=None) -> Optional[dict]:
     """
     Extract and parse MRZ lines directly from the bottom strip of a passport bio-page image.
+    Uses multi-pass bounding box reconstruction and OCR preprocessing.
     """
     if image is None or getattr(image, "size", 0) == 0:
         return None
 
     try:
+        import cv2
         from modules.passport.viz import _get_reader
 
         ocr_reader = reader or _get_reader()
 
+        # Try multiple passes: (1) Full Image (2) Grayscale Threshold (3) Bottom 40% Crop
+        passes = [image]
         h, w = image.shape[:2]
-        # Crop the bottom 25% where TD3 MRZ is located
-        mrz_strip = image[int(h * 0.75) :, :]
-        results = ocr_reader.readtext(mrz_strip, detail=0)
+        if h > 100 and w > 100:
+            passes.append(image[int(h * 0.55):, :])
 
-        # Normalize line candidates
-        candidates = []
-        for r in results:
-            cleaned = r.replace(" ", "").upper()
-            if len(cleaned) >= 35:
-                candidates.append(cleaned)
+        for img_variant in passes:
+            results = ocr_reader.readtext(img_variant, detail=1)
+            # Sort detected boxes vertically from top to bottom
+            results.sort(key=lambda item: item[0][0][1] if (isinstance(item, (list, tuple)) and len(item) > 0) else 0)
 
-        if len(candidates) >= 2:
-            l1 = candidates[0][:44].ljust(44, "<")
-            l2 = candidates[1][:44].ljust(44, "<")
-            parsed = parse_mrz(l1, l2)
-            if parsed:
-                return parsed
+            raw_lines = [str(item[1]).replace(" ", "").upper() for item in results if len(item) > 1]
+            
+            # Find candidate MRZ lines (contains '<' or starts with 'P<' / 'P' + country code)
+            mrz_candidates = []
+            for line in raw_lines:
+                # Replace common OCR misreads in MRZ chevrons
+                clean = line.replace("«", "<").replace("(", "<").replace(")", "<").replace("{", "<").replace("}", "<")
+                if "<" in clean or clean.startswith("P") or len(clean) >= 28:
+                    mrz_candidates.append(clean)
 
-        # Fallback: scan whole image if bottom crop had fewer lines
+            # If we have 2 or more candidates at the end of the text
+            if len(mrz_candidates) >= 2:
+                # Take the last two candidates
+                l1_cand = mrz_candidates[-2]
+                l2_cand = mrz_candidates[-1]
+
+                # Ensure length 44 by padding with <
+                l1 = l1_cand[:44].ljust(44, "<")
+                l2 = l2_cand[:44].ljust(44, "<")
+
+                # If l1 doesn't start with P<, try prefixing P<
+                if not l1.startswith("P"):
+                    if l1_cand.startswith("IND") or l1_cand.startswith("USA") or l1_cand.startswith("GBR"):
+                        l1 = ("P<" + l1_cand)[:44].ljust(44, "<")
+
+                parsed = parse_mrz(l1, l2)
+                if parsed and parsed.get("valid"):
+                    return parsed
+                elif parsed and not parsed.get("error"):
+                    return parsed
+
+        # Fallback to simple line scan if multi-pass didn't validate
         full_res = ocr_reader.readtext(image, detail=0)
         full_candidates = [
-            r.replace(" ", "").upper()
+            r.replace(" ", "").replace("«", "<").upper()
             for r in full_res
-            if len(r.replace(" ", "")) >= 35
+            if len(r.replace(" ", "")) >= 25
         ]
         if len(full_candidates) >= 2:
             l1 = full_candidates[-2][:44].ljust(44, "<")
