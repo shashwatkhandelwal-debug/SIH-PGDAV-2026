@@ -905,8 +905,11 @@ with tab_screening:
         st.subheader("📊 Screening Results")
         if ready_to_screen:
             with st.spinner("Running deep multi-layer document screening..."):
-                results = _run_screening(doc_type, inputs, live_face)
-            _display_results(results)
+                try:
+                    results = _run_screening(doc_type, inputs, live_face)
+                    _display_results(results)
+                except Exception as e:
+                    st.error(f"❌ An error occurred during screening: {e}")
         else:
             st.info("Complete the document capture on the left to begin screening.")
 

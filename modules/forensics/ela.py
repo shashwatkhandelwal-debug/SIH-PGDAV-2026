@@ -45,7 +45,23 @@ def run_ela(
           suspicious    (bool)   - True if variance exceeds threshold
           threshold     (float)  - threshold used
     """
-    pil_img = Image.fromarray(image[..., ::-1])  # BGR to RGB
+    if image is None or getattr(image, "size", 0) == 0:
+        return {
+            "mean_variance": 0.0,
+            "max_variance": 0.0,
+            "heatmap": None,
+            "suspicious": False,
+            "threshold": 15.0,
+        }
+
+    # Ensure 3-channel BGR
+    img = image.copy()
+    if len(img.shape) == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    elif len(img.shape) == 3 and img.shape[2] == 4:
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+    pil_img = Image.fromarray(img[..., ::-1]).convert("RGB")  # BGR to RGB
 
     if region:
         x1, y1, x2, y2 = region
