@@ -1,4 +1,72 @@
 
+let inlineQrScanner = null;
+let isInlineScanning = false;
+
+async function toggleInlineQrCamera() {
+    if (isInlineScanning) {
+        stopInlineQrCamera();
+    } else {
+        startInlineQrCamera();
+    }
+}
+
+async function startInlineQrCamera() {
+    try {
+        const placeholder = document.getElementById("inline-qr-placeholder");
+        const readerDiv = document.getElementById("inline-qr-reader");
+        if (placeholder) placeholder.classList.add("hidden");
+        if (readerDiv) readerDiv.classList.remove("hidden");
+
+        if (!inlineQrScanner) {
+            inlineQrScanner = new Html5Qrcode("inline-qr-reader");
+        }
+        const config = { fps: 30, qrbox: { width: 220, height: 220 } };
+        await inlineQrScanner.start(
+            { facingMode: "environment" },
+            config,
+            onInlineQrSuccess,
+            (err) => {}
+        );
+        isInlineScanning = true;
+        document.getElementById("inline-qr-btn-text").textContent = "Stop";
+        document.getElementById("btn-inline-qr").className = "py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md";
+    } catch (e) {
+        alert("Camera error: " + e + ". Please use Snap Photo!");
+    }
+}
+
+async function stopInlineQrCamera() {
+    if (inlineQrScanner && isInlineScanning) {
+        await inlineQrScanner.stop();
+        isInlineScanning = false;
+        const btnText = document.getElementById("inline-qr-btn-text");
+        if (btnText) btnText.textContent = "Live Scan";
+        const btn = document.getElementById("btn-inline-qr");
+        if (btn) btn.className = "py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center justify-center gap-1.5 shadow-md";
+    }
+}
+
+function onInlineQrSuccess(decodedText, decodedResult) {
+    if (navigator.vibrate) navigator.vibrate(100);
+    stopInlineQrCamera();
+    capturedFiles["back_qr_text"] = decodedText;
+
+    const preview = document.getElementById("preview-back");
+    preview.innerHTML = `
+        <div class="flex flex-col items-center justify-center text-center p-4">
+            <i class="fa-solid fa-circle-check text-emerald-400 text-3xl mb-2"></i>
+            <span class="text-xs font-bold text-white">Aadhaar Secure QR Locked</span>
+            <span class="text-[10px] text-emerald-400 font-mono mt-1">Ready for Cryptographic Validation</span>
+        </div>
+    `;
+    const status = document.getElementById("status-back");
+    if (status) {
+        status.textContent = "READY (QR LOCKED)";
+        status.className = "text-[11px] font-mono text-emerald-400 font-bold";
+    }
+}
+
+
 // ── Dedicated Live QR Scanner Window Logic ────────────────────────────────────
 let html5QrCodeScanner = null;
 let isQrScanning = false;
@@ -226,6 +294,36 @@ function createCaptureCard(key, label, iconClass) {
     div.className = "bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between";
     div.id = `card-${key}`;
 
+    if (key === "back") {
+        div.innerHTML = `
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-bold text-slate-300 flex items-center gap-2">
+                    <i class="fa-solid fa-qrcode text-emerald-400"></i> ${label}
+                </span>
+                <span id="status-back" class="text-[11px] font-mono text-slate-500">PENDING</span>
+            </div>
+            <div id="preview-back" class="w-full h-48 bg-slate-950 rounded-xl border border-dashed border-slate-800 flex flex-col items-center justify-center text-slate-600 relative overflow-hidden mb-3">
+                <div id="inline-qr-reader" class="w-full h-full hidden"></div>
+                <div id="inline-qr-placeholder" class="flex flex-col items-center justify-center p-3 text-center">
+                    <i class="fa-solid fa-bolt text-emerald-400 text-2xl mb-1"></i>
+                    <span class="text-xs font-semibold text-slate-300">Live 60FPS QR Scanner</span>
+                    <span class="text-[10px] text-slate-500 mt-0.5">Locks instantly onto Aadhaar Secure QR</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button type="button" id="btn-inline-qr" onclick="toggleInlineQrCamera()" class="py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center justify-center gap-1.5 shadow-md">
+                    <i class="fa-solid fa-video"></i> <span id="inline-qr-btn-text">Live Scan</span>
+                </button>
+                <label class="cursor-pointer py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-700 active:scale-95 transition-all text-center">
+                    <i class="fa-solid fa-camera text-teal-400"></i> 
+                    <span>Snap Photo</span>
+                    <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelected(event, 'back')">
+                </label>
+            </div>
+        `;
+        return div;
+    }
+
     div.innerHTML = `
         <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-bold text-slate-300 flex items-center gap-2">
@@ -233,7 +331,7 @@ function createCaptureCard(key, label, iconClass) {
             </span>
             <span id="status-${key}" class="text-[11px] font-mono text-slate-500">PENDING</span>
         </div>
-        <div id="preview-${key}" class="w-full h-44 bg-slate-950 rounded-xl border border-dashed border-slate-800 flex flex-col items-center justify-center text-slate-600 relative overflow-hidden mb-3">
+        <div id="preview-${key}" class="w-full h-48 bg-slate-950 rounded-xl border border-dashed border-slate-800 flex flex-col items-center justify-center text-slate-600 relative overflow-hidden mb-3">
             <i class="fa-solid fa-camera text-2xl mb-1"></i>
             <span class="text-xs">Tap Camera Button Below</span>
         </div>
@@ -292,14 +390,19 @@ async function submitScreening() {
     let endpoint = "/screen/aadhaar";
 
     if (activeDocType === "AADHAAR") {
-        if (!capturedFiles["front"] || !capturedFiles["back"]) {
-            alert("Please capture both Aadhaar Front and Back.");
+        if (!capturedFiles["front"] || (!capturedFiles["back"] && !capturedFiles["back_qr_text"])) {
+            alert("Please capture Aadhaar Front and scan or snap Aadhaar Back.");
             btn.disabled = false;
             btn.innerHTML = `<i class="fa-solid fa-bolt text-lg"></i> <span>Execute Deep Multi-Layer Screening</span>`;
             return;
         }
         formData.append("front", capturedFiles["front"]);
-        formData.append("back", capturedFiles["back"]);
+        if (capturedFiles["back"]) {
+            formData.append("back", capturedFiles["back"]);
+        }
+        if (capturedFiles["back_qr_text"]) {
+            formData.append("raw_qr_text", capturedFiles["back_qr_text"]);
+        }
         endpoint = "/screen/aadhaar";
     } else if (activeDocType === "PASSPORT") {
         if (!capturedFiles["bio"]) {

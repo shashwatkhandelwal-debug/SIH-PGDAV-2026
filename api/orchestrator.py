@@ -67,6 +67,7 @@ async def screen_aadhaar(
     document: Optional[UploadFile] = File(None),
     front: Optional[UploadFile] = File(None),
     back: Optional[UploadFile] = File(None),
+    raw_qr_text: Optional[str] = Form(None),
     live_face: Optional[UploadFile] = File(None),
 ):
     """Screen an Aadhaar card image (supporting front and back uploads)."""
@@ -79,7 +80,7 @@ async def screen_aadhaar(
     live_image = await _load_image_from_upload(live_face) if live_face else None
     exif_data = await _run_exif_forensics(primary)
 
-    check_results, notes = await _run_aadhaar_checks(front_image, back_image)
+    check_results, notes = await _run_aadhaar_checks(front_image, back_image, raw_qr_text)
 
     if live_image is not None:
         face_result = await _safe_run(
@@ -281,7 +282,7 @@ async def health():
 # ── Module pipelines ───────────────────────────────────────────────────────────
 
 
-async def _run_aadhaar_checks(image: np.ndarray, back_image: Optional[np.ndarray] = None) -> tuple[dict, list]:
+async def _run_aadhaar_checks(image: np.ndarray, back_image: Optional[np.ndarray] = None, raw_qr_text: Optional[str] = None) -> tuple[dict, list]:
     results = {}
     notes = []
 
@@ -300,10 +301,15 @@ async def _run_aadhaar_checks(image: np.ndarray, back_image: Optional[np.ndarray
 
     ocr = await _safe_run(extract_aadhaar_fields, image)
     
-    # Try QR on back image first, then fallback to front image
+    # Try raw_qr_text first (from live 60FPS scanner), then back_image, then front image
     qr = None
-    if back_image is not None:
-        qr = await _safe_run(decode_aadhaar_qr, back_image)
+    from modules.aadhaar.qr import parse_secure_qr_payload
+    if raw_qr_text and raw_qr_text.strip().isdigit() and len(raw_qr_text.strip()) > 100:
+        qr = parse_secure_qr_payload(raw_qr_text.strip())
+
+    if not qr or qr.get("error"):
+        if back_image is not None:
+            qr = await _safe_run(decode_aadhaar_qr, back_image)
     if not qr or qr.get("error"):
         qr = await _safe_run(decode_aadhaar_qr, image)
 
