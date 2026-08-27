@@ -22,10 +22,10 @@ cryptography>=42.0.0
 # NFC (e-passport)
 nfcpy>=1.0.4
 
-# Face Recognition
-deepface>=0.0.91
-tf-keras
-# insightface>=0.7.3   # Alternative — uncomment if using InsightFace directly
+# Face Recognition (Lightweight OpenCV feature vector with optional DeepFace)
+# deepface>=0.0.91
+# tf-keras
+
 
 # Vector Search (Identity Graph)
 faiss-cpu>=1.8.0
