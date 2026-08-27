@@ -60,20 +60,20 @@
     </header>
 
     <!-- Navigation Tabs -->
-    <div class="max-w-5xl mx-auto px-4 mt-4">
-        <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800 space-x-1">
-            <button onclick="switchTab('screen')" id="tab-btn-screen" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all bg-emerald-500 text-slate-950 shadow-md">
-                <i class="fa-solid fa-id-card"></i> <span>Screening</span>
+    <div class="max-w-5xl mx-auto px-3 mt-4">
+        <div class="grid grid-cols-4 bg-slate-900 p-1 rounded-xl border border-slate-800 gap-1 text-center">
+            <button onclick="switchTab('screen')" id="tab-btn-screen" class="py-2.5 px-1 sm:px-3 rounded-lg text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-emerald-500 text-slate-950 shadow-md whitespace-nowrap truncate">
+                <i class="fa-solid fa-id-card text-xs"></i> <span>Screen</span>
             </button>
-            <button onclick="switchTab('face-bio')" id="tab-btn-face-bio" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
-                <i class="fa-solid fa-camera-retro text-teal-400"></i> <span>Live Face</span>
-                <span id="face-enrolled-dot" class="w-2 h-2 rounded-full bg-slate-600"></span>
+            <button onclick="switchTab('face-bio')" id="tab-btn-face-bio" class="py-2.5 px-1 sm:px-3 rounded-lg text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1.5 transition-all text-slate-400 hover:text-slate-200 whitespace-nowrap truncate">
+                <i class="fa-solid fa-camera text-teal-400 text-xs"></i> <span>Face</span>
+                <span id="face-enrolled-dot" class="w-1.5 h-1.5 rounded-full bg-slate-600 inline-block"></span>
             </button>
-            <button onclick="switchTab('audit')" id="tab-btn-audit" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
-                <i class="fa-solid fa-clipboard-list"></i> <span>Audit</span>
+            <button onclick="switchTab('audit')" id="tab-btn-audit" class="py-2.5 px-1 sm:px-3 rounded-lg text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1.5 transition-all text-slate-400 hover:text-slate-200 whitespace-nowrap truncate">
+                <i class="fa-solid fa-clipboard-list text-xs"></i> <span>Audit</span>
             </button>
-            <button onclick="switchTab('watchlist')" id="tab-btn-watchlist" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
-                <i class="fa-solid fa-shield-halved"></i> <span>Watchlist</span>
+            <button onclick="switchTab('watchlist')" id="tab-btn-watchlist" class="py-2.5 px-1 sm:px-3 rounded-lg text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1.5 transition-all text-slate-400 hover:text-slate-200 whitespace-nowrap truncate">
+                <i class="fa-solid fa-shield-halved text-xs"></i> <span>Watchlist</span>
             </button>
         </div>
     </div>
@@ -314,6 +314,6 @@
 
     </main>
 
-    <script src="/static/app.js?v=5"></script>
+    <script src="/static/app.js?v=6"></script>
 </body>
 </html>
