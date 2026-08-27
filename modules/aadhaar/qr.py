@@ -41,22 +41,28 @@ def _detect_and_decode_qr(
     image: np.ndarray,
 ) -> Tuple[Optional[bytes], Optional[Tuple[int, int, int, int]]]:
     """
-    Multi-pass QR code detector:
-    Tries raw RGB, grayscale, CLAHE contrast enhancement, Otsu binarization,
-    adaptive thresholding, and OpenCV QRCodeDetector.
+    Multi-pass high-density QR code detector & decoder:
+    1. Full image multi-filter sweeps (RGB, Gray, CLAHE, Otsu, Adaptive, Sharpened, Inverted)
+    2. Regional crop sweeps (Right half, Left half, Center, 4 Quadrants)
+    3. Multi-scale cubic interpolation upscaling (1.5x, 2.0x, 2.5x) for dense Version 14+ Aadhaar QRs
+    4. OpenCV QRCodeDetector fallback
     """
     if image is None or image.size == 0:
         return None, None
 
     def try_pyzbar(img_arr):
         try:
-            if isinstance(img_arr, np.ndarray) and len(img_arr.shape) == 2:
-                pil_img = Image.fromarray(img_arr)
-            elif isinstance(img_arr, np.ndarray) and img_arr.shape[2] == 3:
-                # OpenCV BGR → RGB for PIL
-                pil_img = Image.fromarray(cv2.cvtColor(img_arr, cv2.COLOR_BGR2RGB))
+            if isinstance(img_arr, np.ndarray):
+                if len(img_arr.shape) == 2:
+                    pil_img = Image.fromarray(img_arr)
+                elif img_arr.shape[2] == 3:
+                    pil_img = Image.fromarray(cv2.cvtColor(img_arr, cv2.COLOR_BGR2RGB))
+                elif img_arr.shape[2] == 4:
+                    pil_img = Image.fromarray(cv2.cvtColor(img_arr, cv2.COLOR_BGRA2RGB))
+                else:
+                    pil_img = Image.fromarray(img_arr)
             else:
-                pil_img = Image.fromarray(img_arr)
+                pil_img = img_arr
             objs = _pyzbar_decode(pil_img)
             for obj in objs:
                 if obj.type == "QRCODE" and obj.data:
@@ -67,62 +73,88 @@ def _detect_and_decode_qr(
             pass
         return None, None
 
+    # Step 1: Direct full image passes
     data, reg = try_pyzbar(image)
     if data:
         return data, reg
 
-    if len(image.shape) == 3:
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = image
-
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image.copy()
     data, reg = try_pyzbar(gray)
     if data:
         return data, reg
 
-    try:
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(gray)
-        data, reg = try_pyzbar(enhanced)
-        if data:
-            return data, reg
-    except Exception:
-        pass
+    # Filters on full image
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    data, reg = try_pyzbar(enhanced)
+    if data:
+        return data, reg
 
-    try:
-        _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        data, reg = try_pyzbar(otsu)
-        if data:
-            return data, reg
-    except Exception:
-        pass
+    # Sharpening filter
+    sharp_kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+    sharpened = cv2.filter2D(enhanced, -1, sharp_kernel)
+    data, reg = try_pyzbar(sharpened)
+    if data:
+        return data, reg
 
-    try:
-        adaptive = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 51, 11
-        )
-        data, reg = try_pyzbar(adaptive)
-        if data:
-            return data, reg
-    except Exception:
-        pass
+    # Otsu & Adaptive
+    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    data, reg = try_pyzbar(otsu)
+    if data:
+        return data, reg
 
-    # Upscale small QR regions for mobile captures
-    try:
-        h, w = gray.shape[:2]
-        if max(h, w) < 1200:
-            scale = 1200 / float(max(h, w))
-            up = cv2.resize(
-                gray,
-                (int(w * scale), int(h * scale)),
-                interpolation=cv2.INTER_CUBIC,
-            )
-            data, reg = try_pyzbar(up)
+    adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 51, 11)
+    data, reg = try_pyzbar(adaptive)
+    if data:
+        return data, reg
+
+    # Step 2: Regional crops for dense Aadhaar QR on card back/front
+    h, w = gray.shape[:2]
+    candidate_crops = [
+        (int(0.30 * w), 0, w, h),               # Right 70% (standard card back)
+        (0, int(0.30 * h), w, h),               # Bottom 70% (standard card front)
+        (0, 0, int(0.70 * w), h),               # Left 70%
+        (int(0.10 * w), int(0.10 * h), int(0.90 * w), int(0.90 * h)), # Center 80%
+        (int(0.40 * w), 0, w, int(0.60 * h)),     # Top-Right quadrant
+        (int(0.40 * w), int(0.40 * h), w, h),     # Bottom-Right quadrant
+        (0, 0, int(0.60 * w), int(0.60 * h)),     # Top-Left quadrant
+        (0, int(0.40 * h), int(0.60 * w), h),     # Bottom-Left quadrant
+    ]
+
+    for (x1, y1, x2, y2) in candidate_crops:
+        crop_gray = gray[y1:y2, x1:x2]
+        if crop_gray.size == 0:
+            continue
+        
+        # Test crop directly
+        data, sub_reg = try_pyzbar(crop_gray)
+        if data:
+            abs_reg = (x1 + sub_reg[0], y1 + sub_reg[1], x1 + sub_reg[2], y1 + sub_reg[3]) if sub_reg else (x1, y1, x2, y2)
+            return data, abs_reg
+
+        # Test CLAHE + Upscale crop (up to 1400px) for high-density Version 14+ QR codes
+        crop_enh = clahe.apply(crop_gray)
+        ch, cw = crop_enh.shape[:2]
+        if max(ch, cw) < 1400:
+            scale = 1400.0 / float(max(ch, cw))
+            upscaled = cv2.resize(crop_enh, (int(cw * scale), int(ch * scale)), interpolation=cv2.INTER_CUBIC)
+            data, _ = try_pyzbar(upscaled)
             if data:
-                return data, reg
-    except Exception:
-        pass
+                return data, (x1, y1, x2, y2)
 
+            # Test Otsu on upscaled crop
+            _, crop_otsu = cv2.threshold(upscaled, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+            data, _ = try_pyzbar(crop_otsu)
+            if data:
+                return data, (x1, y1, x2, y2)
+
+            # Test Sharpening on upscaled crop
+            crop_sharp = cv2.filter2D(upscaled, -1, sharp_kernel)
+            data, _ = try_pyzbar(crop_sharp)
+            if data:
+                return data, (x1, y1, x2, y2)
+
+    # Step 3: OpenCV QRCodeDetector fallback
     try:
         detector = cv2.QRCodeDetector()
         val, points, _ = detector.detectAndDecode(gray)

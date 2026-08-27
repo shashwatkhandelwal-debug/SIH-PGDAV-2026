@@ -280,8 +280,8 @@ def extract_aadhaar_fields(image: np.ndarray) -> dict:
 
     return {
         "uid": uid,
+        "name": name_en,
         "name_en": name_en,
-        "name_hi": name_hi,
         "dob": dob,
         "gender": gender,
         "address": address,

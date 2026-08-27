@@ -299,7 +299,8 @@ function displayScreeningResults(res, elapsedSec) {
     const ocr = res.ocr_extraction || {};
     const fields = ocr.fields || ocr.qr_fields || ocr.mrz_fields || {};
     for (const [k, v] of Object.entries(fields)) {
-        if (v && typeof v === "string") {
+        if (k === "name_hi" || k === "raw_text" || k === "confidence" || k === "ocr_engine") continue;
+        if (v && typeof v === "string" && v.trim().length > 0) {
             const item = document.createElement("div");
             item.className = "flex justify-between py-1 border-b border-slate-800/60";
             item.innerHTML = `<span class="text-slate-400 capitalize">${k.replace(/_/g, ' ')}:</span><span class="font-semibold text-white">${v}</span>`;
