@@ -23,6 +23,13 @@
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
+    <!-- PWA Config -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#020617">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SSB Screener">
+    <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f6c2.png">
 </head>
 <body class="bg-slate-950 text-slate-100 font-['Inter'] min-h-screen pb-12 antialiased selection:bg-emerald-500 selection:text-black">
 
@@ -42,6 +49,9 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
+                <button id="pwa-install-btn" class="hidden px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1 shadow-md animate-pulse">
+                    <i class="fa-solid fa-download"></i> <span>Install App</span>
+                </button>
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span class="text-xs font-mono text-emerald-400 font-semibold hidden sm:inline">ONLINE</span>
             </div>

@@ -1,3 +1,28 @@
+
+// PWA Service Worker & Install Prompt
+let deferredPrompt;
+window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    const installBtn = document.getElementById("pwa-install-btn");
+    if (installBtn) {
+        installBtn.classList.remove("hidden");
+        installBtn.onclick = async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === "accepted") {
+                    installBtn.classList.add("hidden");
+                }
+                deferredPrompt = null;
+            }
+        };
+    }
+});
+
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/static/sw.js").catch(console.error);
+}
 // SSB Document Screening Engine - Single-Page Client
 let activeDocType = "AADHAAR";
 let capturedFiles = {};
