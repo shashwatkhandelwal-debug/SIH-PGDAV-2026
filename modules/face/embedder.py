@@ -24,14 +24,7 @@ from typing import Optional
 
 import numpy as np
 
-try:
-    from deepface import DeepFace
-
-    _DEEPFACE_AVAILABLE = True
-except ImportError:
-    _DEEPFACE_AVAILABLE = False
-
-# Preferred model  -  change to 'Facenet512' if insightface fails to install
+# Model configuration
 _MODEL_NAME = "ArcFace"
 _BACKEND = "retinaface"  # Best face detector; fallback: 'opencv'
 
@@ -47,10 +40,11 @@ def get_embedding(image: np.ndarray) -> Optional[np.ndarray]:
     Returns:
         512-dim numpy float32 array (unit vector) or None if no face detected.
     """
-    if not _DEEPFACE_AVAILABLE:
+    if image is None or getattr(image, "size", 0) == 0:
         return None
 
     try:
+        from deepface import DeepFace
         result = DeepFace.represent(
             img_path=image,
             model_name=_MODEL_NAME,
