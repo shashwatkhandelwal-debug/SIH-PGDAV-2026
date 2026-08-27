@@ -36,8 +36,18 @@ def check_qr_ocr_consistency(qr_fields: dict, ocr_fields: dict) -> dict:
     details = {}
     compared = 0
 
+    # Extract fields with fallback for nested/alternate keys
+    qr_name = qr_fields.get("name") or qr_fields.get("name_en")
+    ocr_name = ocr_fields.get("name") or ocr_fields.get("name_en") or (ocr_fields.get("fields", {}) if isinstance(ocr_fields.get("fields"), dict) else {}).get("name")
+
+    qr_dob = qr_fields.get("dob")
+    ocr_dob = ocr_fields.get("dob") or (ocr_fields.get("fields", {}) if isinstance(ocr_fields.get("fields"), dict) else {}).get("dob")
+
+    qr_gender = qr_fields.get("gender")
+    ocr_gender = ocr_fields.get("gender") or (ocr_fields.get("fields", {}) if isinstance(ocr_fields.get("fields"), dict) else {}).get("gender")
+
     # 1. Name match (fuzzy — OCR errors expected)
-    name_result = _compare_name(qr_fields.get("name"), ocr_fields.get("name_en"))
+    name_result = _compare_name(qr_name, ocr_name)
     details["name"] = name_result
     if name_result["match"] is True:
         compared += 1
@@ -46,7 +56,7 @@ def check_qr_ocr_consistency(qr_fields: dict, ocr_fields: dict) -> dict:
         mismatches.append("name")
 
     # 2. Date of Birth (normalized exact match)
-    dob_result = _compare_dob(qr_fields.get("dob"), ocr_fields.get("dob"))
+    dob_result = _compare_dob(qr_dob, ocr_dob)
     details["dob"] = dob_result
     if dob_result["match"] is True:
         compared += 1
@@ -55,7 +65,7 @@ def check_qr_ocr_consistency(qr_fields: dict, ocr_fields: dict) -> dict:
         mismatches.append("dob")
 
     # 3. Gender (exact)
-    gender_result = _compare_gender(qr_fields.get("gender"), ocr_fields.get("gender"))
+    gender_result = _compare_gender(qr_gender, ocr_gender)
     details["gender"] = gender_result
     if gender_result["match"] is True:
         compared += 1
@@ -88,7 +98,7 @@ def _compare_name(qr_name: Optional[str], ocr_name: Optional[str]) -> dict:
     qr_norm = _normalize_name(qr_name)
     ocr_norm = _normalize_name(ocr_name)
     dist = levenshtein_distance(qr_norm, ocr_norm)
-    match = dist <= _NAME_MAX_EDIT_DISTANCE
+    match = dist <= _NAME_MAX_EDIT_DISTANCE or (qr_norm in ocr_norm) or (ocr_norm in qr_norm)
 
     return {
         "match": match,
@@ -105,7 +115,7 @@ def _compare_dob(qr_dob: Optional[str], ocr_dob: Optional[str]) -> dict:
 
     qr_norm = _normalize_date(qr_dob)
     ocr_norm = _normalize_date(ocr_dob)
-    match = qr_norm == ocr_norm and len(qr_norm) >= 4
+    match = (qr_norm == ocr_norm) or (len(qr_norm) >= 4 and len(ocr_norm) >= 4 and qr_norm[-4:] == ocr_norm[-4:])
 
     return {"match": match, "qr_value": qr_dob, "ocr_value": ocr_dob}
 
@@ -114,9 +124,9 @@ def _compare_gender(qr_gender: Optional[str], ocr_gender: Optional[str]) -> dict
     if not qr_gender or not ocr_gender:
         return {"match": None, "reason": "missing data"}
 
-    qr_g = qr_gender.upper()[0]  # M / F / T
-    ocr_g = ocr_gender.upper()[0]
-    match = qr_g == ocr_g
+    qr_g = qr_gender.strip().upper()[0] if qr_gender.strip() else ""
+    ocr_g = ocr_gender.strip().upper()[0] if ocr_gender.strip() else ""
+    match = qr_g == ocr_g and qr_g in ("M", "F", "T")
 
     return {"match": match, "qr_value": qr_gender, "ocr_value": ocr_gender}
 

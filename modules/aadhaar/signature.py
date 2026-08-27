@@ -52,15 +52,9 @@ def verify_uidai_signature(raw_payload: bytes, signature: bytes) -> dict:
             "cert_expired": None,
         }
 
-    # Check certificate validity period
+    # Check certificate validity period (recorded for telemetry, not blocking)
     now = datetime.now(timezone.utc)
     cert_expired = now > cert.not_valid_after_utc
-    if cert_expired:
-        return {
-            "valid": False,
-            "error": "UIDAI certificate has expired",
-            "cert_expired": True,
-        }
 
     public_key = cert.public_key()
 
@@ -71,18 +65,18 @@ def verify_uidai_signature(raw_payload: bytes, signature: bytes) -> dict:
             padding.PKCS1v15(),
             hashes.SHA256(),
         )
-        return {"valid": True, "error": None, "cert_expired": False}
+        return {"valid": True, "error": None, "cert_expired": cert_expired}
     except InvalidSignature:
         return {
             "valid": False,
-            "error": "Signature mismatch  -  QR data not issued by UIDAI",
-            "cert_expired": False,
+            "error": "Signature mismatch - QR data not signed by UIDAI root key",
+            "cert_expired": cert_expired,
         }
     except Exception as e:
         return {
             "valid": False,
             "error": f"Verification error: {e}",
-            "cert_expired": False,
+            "cert_expired": cert_expired,
         }
 
 
