@@ -194,6 +194,32 @@ async def screen_permit(
     return await _finalize(check_results, "PERMIT", doc_num, name, exif_data, notes)
 
 
+@app.post("/screen/voter")
+@app.post("/screen/generic_id")
+async def screen_voter(
+    document: UploadFile = File(...),
+    live_face: Optional[UploadFile] = File(None),
+):
+    """Screen an Indian Voter ID (EPIC) or National Identity Card."""
+    doc_image = await _load_image_from_upload(document)
+    live_image = await _load_image_from_upload(live_face) if live_face else None
+    exif_data = await _run_exif_forensics(document)
+
+    check_results, notes = await _run_generic_id_checks(doc_image)
+
+    if live_image is not None:
+        face_result = await _safe_run(
+            _run_face_checks, doc_image, live_image, "GENERIC_ID", None
+        )
+        if face_result:
+            check_results.update(face_result)
+
+    doc_num = check_results.get("_meta", {}).get("doc_number", "")
+    name = check_results.get("_meta", {}).get("name", "")
+
+    return await _finalize(check_results, "GENERIC_ID", doc_num, name, exif_data, notes)
+
+
 @app.get("/audit/recent")
 async def audit_recent(limit: int = 50):
     from shared.audit import get_recent_screenings
@@ -773,6 +799,49 @@ async def _run_permit_checks(
     return results, notes
 
 
+async def _run_generic_id_checks(image: np.ndarray) -> tuple[dict, list]:
+    results = {}
+    notes = []
+    from modules.generic_id.adapter import extract_generic_id_fields
+    from modules.forensics.ela import run_ela
+    from shared.watchlist import check_watchlist
+
+    fields = await _safe_run(extract_generic_id_fields, image)
+    if fields:
+        results["_ocr"] = fields
+        id_num = fields.get("id_number", "")
+        # Standard EPIC Regex check (3 letters + 7 digits)
+        import re
+        is_epic = bool(id_num and re.match(r"^[A-Z]{3}\d{7}$", id_num.strip()))
+        results["generic_id_rules"] = {
+            "score": 1.0 if (id_num and (is_epic or len(id_num) >= 6)) else 0.0,
+            "is_epic": is_epic,
+            "id_number": id_num,
+            "name": fields.get("name"),
+            "dob": fields.get("dob"),
+        }
+        if id_num:
+            notes.append(f"Voter ID / EPIC extracted: {id_num} (Format Valid: {is_epic})")
+
+        watchlist = check_watchlist(id_num, fields.get("name", "")) if id_num else {}
+        if watchlist.get("flagged"):
+            results["watchlist"] = {"score": 0.0, **watchlist}
+            notes.append(f"Watchlist alert: {watchlist.get('reason')}")
+    else:
+        results["generic_id_rules"] = {"score": 0.0, "error": "Voter ID OCR extraction failed"}
+        notes.append("Voter ID extraction failed.")
+
+    ela_full = await _safe_run(run_ela, image)
+    if ela_full:
+        results["ela_full_document"] = ela_full
+
+    results["_meta"] = {
+        "doc_number": (fields or {}).get("id_number", ""),
+        "name": (fields or {}).get("name", ""),
+    }
+    return results, notes
+
+
 async def _run_face_checks(
     doc_image, live_image, doc_type, chip_face_bytes=None
 ) -> dict:
@@ -920,6 +989,30 @@ async def _finalize(
             "num_entries": ocr_extracted.get("num_entries"),
             "passport_number": ocr_extracted.get("passport_number"),
             "applicant_name": ocr_extracted.get("applicant_name"),
+        }
+    elif doc_type in ("DRIVING_LICENCE", "DL"):
+        fields = {
+            "dl_number": ocr_extracted.get("dl_number"),
+            "name": ocr_extracted.get("name"),
+            "dob": ocr_extracted.get("dob"),
+            "doi": ocr_extracted.get("doi"),
+            "valid_until": ocr_extracted.get("valid_until"),
+            "vehicle_classes": ", ".join(ocr_extracted.get("vehicle_classes", [])),
+        }
+    elif doc_type == "PERMIT":
+        fields = {
+            "permit_number": ocr_extracted.get("permit_number"),
+            "holder_name": ocr_extracted.get("holder_name"),
+            "id_number": ocr_extracted.get("id_number"),
+            "valid_until": ocr_extracted.get("valid_until"),
+            "entry_point": ocr_extracted.get("entry_point"),
+        }
+    elif doc_type in ("GENERIC_ID", "NATIONAL_ID", "VOTER"):
+        fields = {
+            "epic_number": ocr_extracted.get("id_number"),
+            "name": ocr_extracted.get("name"),
+            "dob": ocr_extracted.get("dob"),
+            "expiry_date": ocr_extracted.get("expiry_date"),
         }
 
     ocr_extraction = {

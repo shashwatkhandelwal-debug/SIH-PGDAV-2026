@@ -499,13 +499,13 @@ async function submitScreening() {
         endpoint = "/screen/permit";
     } else if (activeDocType === "GENERIC_ID") {
         if (!capturedFiles["generic_id"]) {
-            alert("Please capture the ID card.");
+            alert("Please capture the Voter ID / National ID card.");
             btn.disabled = false;
             btn.innerHTML = `<i class="fa-solid fa-bolt text-lg"></i> <span>Execute Deep Multi-Layer Screening</span>`;
             return;
         }
         formData.append("document", capturedFiles["generic_id"]);
-        endpoint = "/screen/permit";
+        endpoint = "/screen/generic_id";
     }
 
     if (capturedFiles["live_face"]) {
