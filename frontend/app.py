@@ -132,14 +132,16 @@ def _render_image_input(
     label: str, key_suffix: str, scan_type: str = "doc"
 ) -> Optional[np.ndarray]:
     """
-    Direct one-tap camera capture widget.
-    Takes photo directly, displays instant visual preview, and automatically passes to OpenBharatOCR & PyZBar.
+    Direct Native Phone Camera launcher.
+    Tapping this button opens your phone's native Camera application directly.
+    Once the picture is taken, it is previewed on screen and automatically passed to OpenBharatOCR & PyZBar.
     """
-    cam_key = f"cam_{key_suffix}"
-    cls_name = "qr-scan-container" if scan_type == "qr" else "doc-scan-container"
-    st.markdown(f'<div class="{cls_name}">', unsafe_allow_html=True)
-    cam_file = st.camera_input(f"📷 Snap {label}", key=cam_key)
-    st.markdown("</div>", unsafe_allow_html=True)
+    cam_file = st.file_uploader(
+        f"📸 Tap to Open Phone Camera: {label}",
+        type=["jpg", "jpeg", "png"],
+        key=f"cam_{key_suffix}",
+        help="Opens your phone's native camera app with autofocus.",
+    )
 
     if cam_file is not None:
         pil_img = Image.open(cam_file)
