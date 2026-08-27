@@ -155,9 +155,10 @@ def _render_image_input(
 
     with c2:
         up_file = st.file_uploader(
-            f"Or Upload {label} Image",
+            f"📁 High-Res Native Camera / Upload ({label})",
             type=["jpg", "jpeg", "png"],
             key=f"up_{key_suffix}",
+            help="On mobile devices, tapping this opens your phone's native camera app with full hardware autofocus.",
         )
         up_img = None
         if up_file:
@@ -166,7 +167,9 @@ def _render_image_input(
 
     selected = cam_img if cam_img is not None else up_img
     if selected is not None:
-        st.image(cv2.cvtColor(selected, cv2.COLOR_BGR2RGB), caption=f"Selected: {label}", use_container_width=True)
+        from shared.preprocess import enhance_and_deblur_document
+        selected = enhance_and_deblur_document(selected)
+        st.image(cv2.cvtColor(selected, cv2.COLOR_BGR2RGB), caption=f"Selected: {label} (Enhanced & Sharpened)", use_container_width=True)
     return selected
 
 

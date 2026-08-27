@@ -76,6 +76,36 @@ def correct_perspective(
     return warped
 
 
+def enhance_and_deblur_document(image: np.ndarray) -> np.ndarray:
+    """
+    Enhance low-resolution or slightly blurry document captures:
+    1. Upscales small browser frames (< 1200px) using cubic interpolation.
+    2. Applies LAB-space CLAHE to normalize lighting and remove camera glare.
+    3. Uses unsharp masking with Gaussian blur difference to sharpen fine text and QR edges.
+    """
+    if image is None or getattr(image, "size", 0) == 0:
+        return image
+
+    h, w = image.shape[:2]
+    # Upscale if low resolution browser video frame
+    if w < 1200:
+        scale = 1200.0 / float(w)
+        image = cv2.resize(image, (1200, int(h * scale)), interpolation=cv2.INTER_CUBIC)
+
+    # Convert to LAB for luminance-only contrast enhancement
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l_enhanced = clahe.apply(l)
+    enhanced_lab = cv2.merge((l_enhanced, a, b))
+    enhanced_bgr = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
+
+    # Subtle unsharp masking for text edge crispness
+    gaussian = cv2.GaussianBlur(enhanced_bgr, (0, 0), 2.0)
+    sharpened = cv2.addWeighted(enhanced_bgr, 1.3, gaussian, -0.3, 0)
+    return sharpened
+
+
 def crop_region(image: np.ndarray, region_frac: tuple) -> np.ndarray:
     """
     Crop a relative region from the image.
