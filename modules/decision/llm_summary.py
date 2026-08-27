@@ -31,6 +31,13 @@ def generate_summary(check_results: dict, score_result: dict) -> str:
     Returns:
         One sentence describing the most critical finding and recommended action.
     """
+    tier = check_results.get("verification_tier")
+    failed = score_result.get("failed_checks", [])
+
+    # Strict policy gate: If QR is unreadable and no other check failed, never call Gemini (prevent hallucinating QR mismatch)
+    if tier == "QR_UNREADABLE" and not failed:
+        return "Format and physical checks passed, but QR unreadable: recommend camera recapture or secondary manual verification."
+
     if _GENAI_AVAILABLE and os.getenv("GEMINI_API_KEY"):
         try:
             return _llm_summary(check_results, score_result)
@@ -52,6 +59,7 @@ def _llm_summary(check_results: dict, score_result: dict) -> str:
     overall_score = score_result.get("overall_score") or score_result.get(
         "total_score", 0
     )
+    tier = check_results.get("verification_tier", "STANDARD")
 
     face_match = check_results.get("face_match")
     if face_match and (
@@ -69,15 +77,16 @@ def _llm_summary(check_results: dict, score_result: dict) -> str:
     prompt = f"""You are a document security assistant at a border checkpoint.
 A traveler has presented identity documents. Here is the verification result:
 
+Document Verification Tier: {tier}
 Risk Status: {status}
 Risk Score: {overall_score:.0f}/100
 Failed checks: {', '.join(failed) if failed else 'None'}
 Check details: {json.dumps({k: v.get('score') for k, v in check_results.items() if isinstance(v, dict)}, indent=2)}
 
-Write EXACTLY ONE concise sentence (maximum 30 words) that:
-1. States the most critical finding (e.g. document tampering, signature mismatch, or face photo mismatch)
-2. Gives the officer a clear action (proceed / manual check / hold)
-Do not use technical jargon. Focus on the single most important issue.
+IMPORTANT RULES:
+- If Verification Tier is QR_UNREADABLE, the QR was not decoded due to camera blur/glare. NEVER claim the QR was forged, tampered, or mismatched with text.
+- If Verification Tier is QR_LEGACY, the card is pre-2017 without digital signature. Do not claim signature failure.
+- State EXACTLY ONE concise sentence (maximum 28 words) stating the single most critical finding and recommended officer action (proceed / manual check / hold).
 """
 
     response = model.generate_content(prompt)

@@ -102,9 +102,9 @@ def get_recent_screenings(limit: int = 50, checkpoint_id: str = None) -> list:
 
 
 def get_flagged_screenings(risk_levels: list = None) -> list:
-    """Retrieve all HIGH/MEDIUM risk screenings for investigation."""
+    """Retrieve all FLAGGED/REVIEW risk screenings for investigation."""
     if risk_levels is None:
-        risk_levels = ["HIGH", "MEDIUM"]
+        risk_levels = ["FLAGGED", "REVIEW", "HIGH", "MEDIUM"]
     placeholders = ",".join("?" * len(risk_levels))
     db = _get_db()
     cur = db.execute(

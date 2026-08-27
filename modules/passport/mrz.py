@@ -104,3 +104,50 @@ def _parse_date(yymmdd: str) -> Optional[str]:
         return f"{dd:02d}/{mm:02d}/{year}"
     except Exception:
         return None
+
+
+def parse_mrz_from_image(image, reader=None) -> Optional[dict]:
+    """
+    Extract and parse MRZ lines directly from the bottom strip of a passport bio-page image.
+    """
+    if image is None or getattr(image, "size", 0) == 0:
+        return None
+
+    try:
+        from modules.passport.viz import _get_reader
+
+        ocr_reader = reader or _get_reader()
+
+        h, w = image.shape[:2]
+        # Crop the bottom 25% where TD3 MRZ is located
+        mrz_strip = image[int(h * 0.75) :, :]
+        results = ocr_reader.readtext(mrz_strip, detail=0)
+
+        # Normalize line candidates
+        candidates = []
+        for r in results:
+            cleaned = r.replace(" ", "").upper()
+            if len(cleaned) >= 35:
+                candidates.append(cleaned)
+
+        if len(candidates) >= 2:
+            l1 = candidates[0][:44].ljust(44, "<")
+            l2 = candidates[1][:44].ljust(44, "<")
+            parsed = parse_mrz(l1, l2)
+            if parsed:
+                return parsed
+
+        # Fallback: scan whole image if bottom crop had fewer lines
+        full_res = ocr_reader.readtext(image, detail=0)
+        full_candidates = [
+            r.replace(" ", "").upper()
+            for r in full_res
+            if len(r.replace(" ", "")) >= 35
+        ]
+        if len(full_candidates) >= 2:
+            l1 = full_candidates[-2][:44].ljust(44, "<")
+            l2 = full_candidates[-1][:44].ljust(44, "<")
+            return parse_mrz(l1, l2)
+    except Exception as e:
+        return {"valid": False, "error": f"MRZ image extraction failed: {str(e)}"}
+    return None

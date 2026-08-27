@@ -129,6 +129,48 @@ async def screen_visa(
     return await _finalize(check_results, "VISA", doc_num, name, exif_data, notes)
 
 
+@app.post("/screen/dl")
+async def screen_driving_licence(
+    document: UploadFile = File(...),
+    live_face: Optional[UploadFile] = File(None),
+):
+    """Screen an Indian Driving Licence image."""
+    doc_image = await _load_image_from_upload(document)
+    live_image = await _load_image_from_upload(live_face) if live_face else None
+    exif_data = await _run_exif_forensics(document)
+
+    check_results, notes = await _run_dl_checks(doc_image)
+
+    if live_image is not None:
+        face_result = await _safe_run(
+            _run_face_checks, doc_image, live_image, "DRIVING_LICENCE", None
+        )
+        if face_result:
+            check_results.update(face_result)
+
+    doc_num = check_results.get("_meta", {}).get("doc_number", "")
+    name = check_results.get("_meta", {}).get("name", "")
+
+    return await _finalize(check_results, "DRIVING_LICENCE", doc_num, name, exif_data, notes)
+
+
+@app.post("/screen/permit")
+async def screen_permit(
+    document: UploadFile = File(...),
+    presented_id: Optional[str] = Form(None),
+):
+    """Screen a border permit or travel authorization document."""
+    doc_image = await _load_image_from_upload(document)
+    exif_data = await _run_exif_forensics(document)
+
+    check_results, notes = await _run_permit_checks(doc_image, presented_id)
+
+    doc_num = check_results.get("_meta", {}).get("doc_number", "")
+    name = check_results.get("_meta", {}).get("name", "")
+
+    return await _finalize(check_results, "PERMIT", doc_num, name, exif_data, notes)
+
+
 @app.get("/audit/recent")
 async def audit_recent(limit: int = 50):
     from shared.audit import get_recent_screenings
@@ -552,6 +594,82 @@ async def _run_visa_checks(
     results["_meta"] = {
         "doc_number": (visa_fields or {}).get("visa_number", ""),
         "name": (visa_fields or {}).get("applicant_name", ""),
+    }
+    return results, notes
+
+
+async def _run_dl_checks(image: np.ndarray) -> tuple[dict, list]:
+    results = {}
+    notes = []
+    from modules.dl.ocr import extract_dl_fields
+    from modules.dl.rules import validate_dl_rules
+    from modules.forensics.ela import run_ela
+    from shared.watchlist import check_watchlist
+
+    dl_fields = await _safe_run(extract_dl_fields, image)
+    if dl_fields:
+        results["_ocr"] = dl_fields
+        rules = await _safe_run(validate_dl_rules, dl_fields)
+        if rules:
+            results["dl_rules"] = rules
+        else:
+            results["dl_rules"] = {"score": 0.0, "error": "DL rules validation failed"}
+            notes.append("DL rules validation failed.")
+
+        dl_num = dl_fields.get("dl_number", "")
+        watchlist = check_watchlist(dl_num, "Driving Licence") if dl_num else {}
+        if watchlist.get("flagged"):
+            results["watchlist"] = {"score": 0.0, **watchlist}
+    else:
+        results["dl_rules"] = {"score": 0.0, "error": "DL OCR extraction failed"}
+        notes.append("Driving Licence OCR extraction failed.")
+
+    ela_full = await _safe_run(run_ela, image)
+    if ela_full:
+        results["ela_full_document"] = ela_full
+
+    results["_meta"] = {
+        "doc_number": (dl_fields or {}).get("dl_number", ""),
+        "name": (dl_fields or {}).get("name", ""),
+    }
+    return results, notes
+
+
+async def _run_permit_checks(
+    image: np.ndarray, presented_id: Optional[str] = None
+) -> tuple[dict, list]:
+    results = {}
+    notes = []
+    from modules.forensics.ela import run_ela
+    from modules.permit.ocr import extract_permit_fields
+    from modules.permit.rules import validate_permit_rules
+    from shared.watchlist import check_watchlist
+
+    p_fields = await _safe_run(extract_permit_fields, image)
+    if p_fields:
+        results["_ocr"] = p_fields
+        rules = await _safe_run(validate_permit_rules, p_fields, presented_id)
+        if rules:
+            results["permit_rules"] = rules
+        else:
+            results["permit_rules"] = {"score": 0.0, "error": "Permit validation failed"}
+            notes.append("Permit validation failed.")
+
+        p_num = p_fields.get("permit_number", "")
+        watchlist = check_watchlist(p_num, "Permit") if p_num else {}
+        if watchlist.get("flagged"):
+            results["watchlist"] = {"score": 0.0, **watchlist}
+    else:
+        results["permit_rules"] = {"score": 0.0, "error": "Permit OCR extraction failed"}
+        notes.append("Permit OCR extraction failed.")
+
+    ela_full = await _safe_run(run_ela, image)
+    if ela_full:
+        results["ela_full_document"] = ela_full
+
+    results["_meta"] = {
+        "doc_number": (p_fields or {}).get("permit_number", ""),
+        "name": (p_fields or {}).get("holder_name", ""),
     }
     return results, notes
 

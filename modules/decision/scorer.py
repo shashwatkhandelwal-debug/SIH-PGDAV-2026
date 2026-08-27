@@ -33,10 +33,16 @@ def compute_score(
             or "passport_mrz_viz_consistency" in check_results
         ):
             doc_type = "PASSPORT"
+        elif "dl_rules" in check_results or "dl_format" in check_results:
+            doc_type = "DRIVING_LICENCE"
+        elif "permit_rules" in check_results or "permit_binding" in check_results:
+            doc_type = "PERMIT"
+        elif "generic_id_rules" in check_results:
+            doc_type = "GENERIC_ID"
         else:
             doc_type = "AADHAAR"
 
-    doc_type = doc_type.upper()
+    doc_type = doc_type.upper().replace(" ", "_")
 
     # Common ELA Anomaly calculation (shared across all document types)
     ela_variance = 0.0
@@ -51,7 +57,63 @@ def compute_score(
     ela_anomaly_normalized = min(1.0, ela_variance / ELA_NORMALIZATION_THRESHOLD)
     term_ela = 20.0 * ela_anomaly_normalized
 
-    if doc_type == "VISA":
+    if doc_type in ("DRIVING_LICENCE", "DL"):
+        # Standardized 30 + 30 + 20 + 20 matrix for Driving Licence
+        dl_rules = check_results.get("dl_rules", {})
+        rule_fail = 1.0 if (isinstance(dl_rules, dict) and not dl_rules.get("format_valid", True)) else 0.0
+        expired_fail = 1.0 if (isinstance(dl_rules, dict) and dl_rules.get("expired", False)) else 0.0
+        age_fail = 1.0 if (isinstance(dl_rules, dict) and not dl_rules.get("age_valid", True)) else 0.0
+
+        term_format = 30.0 * rule_fail
+        term_validity = 30.0 * (1.0 if expired_fail or age_fail else 0.0)
+        term_viz = 20.0 * (1.0 if (rule_fail and expired_fail) else 0.0)
+
+        raw_score = term_format + term_validity + term_viz + term_ela
+        overall_score = min(100.0, max(0.0, raw_score))
+
+        component_breakdown = {
+            "format_rules_contribution": round(term_format, 2),
+            "validity_expiry_contribution": round(term_validity, 2),
+            "viz_consistency_contribution": round(term_viz, 2),
+            "ela_contribution": round(term_ela, 2),
+        }
+    elif doc_type in ("PERMIT", "TRAVEL_PERMIT"):
+        # Standardized 30 + 30 + 20 + 20 matrix for Border Entry Permits
+        p_rules = check_results.get("permit_rules", {})
+        permit_fail = 1.0 if (isinstance(p_rules, dict) and not p_rules.get("valid", True)) else 0.0
+        binding_fail = 1.0 if (isinstance(p_rules, dict) and not p_rules.get("bound", True)) else 0.0
+        expired_fail = 1.0 if (isinstance(p_rules, dict) and p_rules.get("expired", False)) else 0.0
+
+        term_rules = 30.0 * (1.0 if permit_fail or expired_fail else 0.0)
+        term_binding = 30.0 * binding_fail
+        term_cross_field = 20.0 * binding_fail
+
+        raw_score = term_rules + term_binding + term_cross_field + term_ela
+        overall_score = min(100.0, max(0.0, raw_score))
+
+        component_breakdown = {
+            "permit_validity_contribution": round(term_rules, 2),
+            "id_binding_contribution": round(term_binding, 2),
+            "cross_field_contribution": round(term_cross_field, 2),
+            "ela_contribution": round(term_ela, 2),
+        }
+    elif doc_type in ("GENERIC_ID", "NATIONAL_ID"):
+        gid_rules = check_results.get("generic_id_rules", {})
+        gid_fail = 1.0 if (isinstance(gid_rules, dict) and gid_rules.get("score") == 0.0) else 0.0
+        term_format = 30.0 * gid_fail
+        term_validity = 30.0 * gid_fail
+        term_viz = 20.0 * gid_fail
+
+        raw_score = term_format + term_validity + term_viz + term_ela
+        overall_score = min(100.0, max(0.0, raw_score))
+
+        component_breakdown = {
+            "format_rules_contribution": round(term_format, 2),
+            "validity_contribution": round(term_validity, 2),
+            "viz_consistency_contribution": round(term_viz, 2),
+            "ela_contribution": round(term_ela, 2),
+        }
+    elif doc_type == "VISA":
         # Document-specific scoring logic for Visa.
         # Since Visa stickers do not contain printed check digits or signed QR codes,
         # the standard checksum and signature checks are replaced.
@@ -244,6 +306,74 @@ def compute_score(
                 failed_checks.append(name)
             elif score == 0.5:
                 uncertain_checks.append(name)
+
+    # ── Hard Overrides & High-Risk Threat Escalations ─────────────────────────
+
+    # 1. Watchlist Blacklist Hit -> Mandatory FLAGGED (100.0)
+    watchlist = check_results.get("watchlist")
+    if isinstance(watchlist, dict) and (
+        watchlist.get("flagged") or watchlist.get("score") == 0.0
+    ):
+        overall_score = 100.0
+        status = "FLAGGED"
+        if "watchlist" not in failed_checks:
+            failed_checks.append("watchlist")
+
+    # 2. Identity Graph Conflict (Face seen under different name/doc) -> Mandatory FLAGGED (100.0)
+    id_graph = check_results.get("identity_graph")
+    if isinstance(id_graph, dict) and id_graph.get("identity_conflict"):
+        overall_score = 100.0
+        status = "FLAGGED"
+        if "identity_conflict" not in failed_checks:
+            failed_checks.append("identity_conflict")
+
+    # 3. Biometric Face Mismatch or Liveness Failure -> Escalates to FLAGGED
+    face_match = check_results.get("face_match")
+    if isinstance(face_match, dict):
+        if (
+            face_match.get("matched") is False
+            or face_match.get("verdict") == "MISMATCH"
+            or face_match.get("score") == 0.0
+        ):
+            overall_score = max(overall_score, 75.0)
+            status = "FLAGGED"
+            if "face_match" not in failed_checks:
+                failed_checks.append("face_match")
+        elif face_match.get("verdict") == "UNCERTAIN":
+            overall_score = max(overall_score, 45.0)
+            if status == "CLEAR":
+                status = "REVIEW"
+
+    liveness = check_results.get("liveness")
+    if isinstance(liveness, dict) and (
+        liveness.get("live") is False or liveness.get("score") == 0.0
+    ):
+        overall_score = max(overall_score, 75.0)
+        status = "FLAGGED"
+        if "liveness" not in failed_checks:
+            failed_checks.append("liveness")
+
+    # 4. EXIF Splicing / Editing Software Tag (Photoshop, GIMP, Canva, etc.)
+    exif = check_results.get("exif_forensics") or check_results.get("exif")
+    if isinstance(exif, dict) and exif.get("suspicious"):
+        overall_score = min(100.0, overall_score + 25.0)
+        if "exif_forensics" not in failed_checks:
+            failed_checks.append("exif_forensics")
+        if overall_score > 60.0:
+            status = "FLAGGED"
+        elif overall_score > 30.0 and status == "CLEAR":
+            status = "REVIEW"
+
+    # 5. Document Expiry Check
+    expiry_check = check_results.get("expiry_valid")
+    if isinstance(expiry_check, dict) and expiry_check.get("score") == 0.0:
+        overall_score = min(100.0, overall_score + 30.0)
+        if "expiry_valid" not in failed_checks:
+            failed_checks.append("expiry_valid")
+        if overall_score > 60.0:
+            status = "FLAGGED"
+        elif overall_score > 30.0 and status == "CLEAR":
+            status = "REVIEW"
 
     return {
         "overall_score": round(overall_score, 1),
