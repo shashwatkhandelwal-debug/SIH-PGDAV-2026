@@ -367,14 +367,19 @@ function createCaptureCard(key, label, iconClass) {
                     <span class="text-[10px] text-slate-500 mt-0.5">Locks instantly onto Aadhaar Secure QR</span>
                 </div>
             </div>
-            <div class="grid grid-cols-2 gap-2">
-                <button type="button" id="btn-inline-qr" onclick="toggleInlineQrCamera()" class="py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center justify-center gap-1.5 shadow-md">
+            <div class="grid grid-cols-3 gap-1.5">
+                <button type="button" id="btn-inline-qr" onclick="toggleInlineQrCamera()" class="py-2.5 px-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[11px] font-bold flex items-center justify-center gap-1 shadow-md truncate">
                     <i class="fa-solid fa-video"></i> <span id="inline-qr-btn-text">Live Scan</span>
                 </button>
-                <label class="cursor-pointer py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-700 active:scale-95 transition-all text-center">
+                <label class="cursor-pointer py-2.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold flex items-center justify-center gap-1 border border-slate-700 active:scale-95 transition-all text-center truncate">
                     <i class="fa-solid fa-camera text-teal-400"></i> 
-                    <span>Snap Photo</span>
+                    <span>Camera</span>
                     <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelected(event, 'back')">
+                </label>
+                <label class="cursor-pointer py-2.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold flex items-center justify-center gap-1 border border-slate-700 active:scale-95 transition-all text-center truncate">
+                    <i class="fa-solid fa-folder-open text-blue-400"></i> 
+                    <span>Upload</span>
+                    <input type="file" accept="image/*" class="hidden" onchange="handleFileSelected(event, 'back')">
                 </label>
             </div>
         `;
@@ -389,14 +394,21 @@ function createCaptureCard(key, label, iconClass) {
             <span id="status-${key}" class="text-[11px] font-mono text-slate-500">PENDING</span>
         </div>
         <div id="preview-${key}" class="w-full h-48 bg-slate-950 rounded-xl border border-dashed border-slate-800 flex flex-col items-center justify-center text-slate-600 relative overflow-hidden mb-3">
-            <i class="fa-solid fa-camera text-2xl mb-1"></i>
-            <span class="text-xs">Tap Camera Button Below</span>
+            <i class="fa-solid fa-cloud-arrow-up text-2xl mb-1 text-slate-500"></i>
+            <span class="text-xs text-slate-400">Snap Photo or Upload File</span>
         </div>
-        <label class="cursor-pointer w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 border border-slate-700 active:scale-95 transition-all">
-            <i class="fa-solid fa-camera text-emerald-400"></i> 
-            <span>Snap with Phone Camera</span>
-            <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelected(event, '${key}')">
-        </label>
+        <div class="grid grid-cols-2 gap-2">
+            <label class="cursor-pointer py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 border border-slate-700 active:scale-95 transition-all text-center">
+                <i class="fa-solid fa-camera text-emerald-400"></i> 
+                <span>Snap Camera</span>
+                <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelected(event, '${key}')">
+            </label>
+            <label class="cursor-pointer py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 border border-slate-700 active:scale-95 transition-all text-center">
+                <i class="fa-solid fa-folder-open text-teal-400"></i> 
+                <span>Upload File</span>
+                <input type="file" accept="image/*" class="hidden" onchange="handleFileSelected(event, '${key}')">
+            </label>
+        </div>
     `;
     return div;
 }
@@ -408,11 +420,18 @@ function renderFaceCaptureCard() {
             <div id="preview-live_face" class="w-16 h-16 bg-slate-950 rounded-xl border border-dashed border-slate-800 flex items-center justify-center text-slate-600 overflow-hidden flex-shrink-0">
                 <i class="fa-solid fa-user"></i>
             </div>
-            <label class="flex-1 cursor-pointer py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center justify-center gap-2 border border-slate-700">
-                <i class="fa-solid fa-camera text-teal-400"></i>
-                <span>Snap Live Selfie</span>
-                <input type="file" accept="image/*" capture="user" class="hidden" onchange="handleFileSelected(event, 'live_face')">
-            </label>
+            <div class="flex-1 grid grid-cols-2 gap-2">
+                <label class="cursor-pointer py-2.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-700 text-center">
+                    <i class="fa-solid fa-camera text-teal-400"></i>
+                    <span>Selfie Camera</span>
+                    <input type="file" accept="image/*" capture="user" class="hidden" onchange="handleFileSelected(event, 'live_face')">
+                </label>
+                <label class="cursor-pointer py-2.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-700 text-center">
+                    <i class="fa-solid fa-folder-open text-emerald-400"></i>
+                    <span>Upload Photo</span>
+                    <input type="file" accept="image/*" class="hidden" onchange="handleFileSelected(event, 'live_face')">
+                </label>
+            </div>
         </div>
     `;
 }
