@@ -1,4 +1,128 @@
 
+// ── Dedicated Live QR Scanner Window Logic ────────────────────────────────────
+let html5QrCodeScanner = null;
+let isQrScanning = false;
+
+function toggleQrCamera() {
+    if (isQrScanning) {
+        stopQrCamera();
+    } else {
+        startQrCamera();
+    }
+}
+
+async function startQrCamera() {
+    try {
+        if (!html5QrCodeScanner) {
+            html5QrCodeScanner = new Html5Qrcode("qr-reader");
+        }
+        const config = { fps: 30, qrbox: { width: 280, height: 280 } };
+        await html5QrCodeScanner.start(
+            { facingMode: "environment" },
+            config,
+            onQrCodeSuccess,
+            (errorMessage) => {}
+        );
+        isQrScanning = true;
+        document.getElementById("camera-btn-text").textContent = "Stop Scanner";
+        document.getElementById("btn-toggle-camera").className = "py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md";
+    } catch (err) {
+        alert("Unable to start camera stream: " + err + ". Use the Snap / Upload button below!");
+    }
+}
+
+async function stopQrCamera() {
+    if (html5QrCodeScanner && isQrScanning) {
+        await html5QrCodeScanner.stop();
+        isQrScanning = false;
+        document.getElementById("camera-btn-text").textContent = "Start Live Scanner";
+        document.getElementById("btn-toggle-camera").className = "py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-md";
+    }
+}
+
+async function onQrCodeSuccess(decodedText, decodedResult) {
+    if (navigator.vibrate) navigator.vibrate(100);
+    stopQrCamera();
+
+    const formData = new FormData();
+    formData.append("raw_text", decodedText);
+
+    try {
+        const response = await fetch("/verify/qr", {
+            method: "POST",
+            body: formData
+        });
+        const res = await response.json();
+        displayDedicatedQrResults(res);
+    } catch (e) {
+        alert("Failed to verify QR: " + e.message);
+    }
+}
+
+async function handleDedicatedQrFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("document", file);
+
+    const btnText = document.getElementById("camera-btn-text");
+    btnText.textContent = "Processing with zxing-cpp...";
+
+    try {
+        const response = await fetch("/verify/qr", {
+            method: "POST",
+            body: formData
+        });
+        const res = await response.json();
+        displayDedicatedQrResults(res);
+    } catch (e) {
+        alert("Failed to parse QR file: " + e.message);
+    } finally {
+        btnText.textContent = isQrScanning ? "Stop Scanner" : "Start Live Scanner";
+    }
+}
+
+function displayDedicatedQrResults(res) {
+    const card = document.getElementById("qr-results-card");
+    card.classList.remove("hidden");
+    card.scrollIntoView({ behavior: "smooth" });
+
+    const badge = document.getElementById("qr-sig-badge");
+    if (res.signature_valid) {
+        badge.textContent = "UIDAI SIGNATURE VALID (AUTHENTIC)";
+        badge.className = "px-3 py-1 rounded-full text-xs font-bold font-mono bg-emerald-500 text-slate-950";
+    } else {
+        badge.textContent = res.status === "UNREADABLE" ? "QR CODE UNREADABLE" : "SIGNATURE INVALID (TAMPERED)";
+        badge.className = "px-3 py-1 rounded-full text-xs font-bold font-mono bg-rose-500 text-white";
+    }
+
+    const photoCont = document.getElementById("qr-photo-container");
+    if (res.photo_base64) {
+        photoCont.innerHTML = `<img src="data:image/jpeg;base64,${res.photo_base64}" class="w-full h-full object-cover">`;
+    } else {
+        photoCont.innerHTML = `<i class="fa-solid fa-user text-2xl"></i>`;
+    }
+
+    const list = document.getElementById("qr-demographics-list");
+    list.innerHTML = "";
+    const fields = res.fields || {};
+    for (const [k, v] of Object.entries(fields)) {
+        if (k !== "photo_bytes" && k !== "signature" && k !== "raw_payload" && v && typeof v === "string") {
+            const item = document.createElement("div");
+            item.className = "flex justify-between py-1 border-b border-slate-800/60";
+            item.innerHTML = `<span class="text-slate-400 capitalize">${k.replace(/_/g, ' ')}:</span><span class="font-semibold text-white">${v}</span>`;
+            list.appendChild(item);
+        }
+    }
+}
+
+function resetQrScanner() {
+    document.getElementById("qr-results-card").classList.add("hidden");
+    startQrCamera();
+}
+
+
 // PWA Service Worker & Install Prompt
 let deferredPrompt;
 window.addEventListener("beforeinstallprompt", (e) => {
@@ -36,13 +160,19 @@ function switchTab(tabId) {
     document.getElementById("tab-screen").classList.add("hidden");
     document.getElementById("tab-audit-view").classList.add("hidden");
     document.getElementById("tab-watchlist-view").classList.add("hidden");
+    document.getElementById("tab-qr-live").classList.add("hidden");
+    stopQrCamera();
 
     document.querySelectorAll("[id^='tab-btn-']").forEach(btn => {
         btn.classList.remove("bg-emerald-500", "text-slate-950");
         btn.classList.add("text-slate-400");
     });
 
-    if (tabId === "screen") {
+    if (tabId === "qr-live") {
+        document.getElementById("tab-qr-live").classList.remove("hidden");
+        document.getElementById("tab-btn-qr-live").classList.add("bg-emerald-500", "text-slate-950");
+        document.getElementById("tab-btn-qr-live").classList.remove("text-slate-400");
+    } else if (tabId === "screen") {
         document.getElementById("tab-screen").classList.remove("hidden");
         document.getElementById("tab-btn-screen").classList.add("bg-emerald-500", "text-slate-950");
         document.getElementById("tab-btn-screen").classList.remove("text-slate-400");

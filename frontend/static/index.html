@@ -30,6 +30,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="SSB Screener">
     <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f6c2.png">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 font-['Inter'] min-h-screen pb-12 antialiased selection:bg-emerald-500 selection:text-black">
 
@@ -62,10 +63,13 @@
     <div class="max-w-5xl mx-auto px-4 mt-4">
         <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800 space-x-1">
             <button onclick="switchTab('screen')" id="tab-btn-screen" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all bg-emerald-500 text-slate-950 shadow-md">
-                <i class="fa-solid fa-id-card"></i> <span>Screen Document</span>
+                <i class="fa-solid fa-id-card"></i> <span>Screen</span>
+            </button>
+            <button onclick="switchTab('qr-live')" id="tab-btn-qr-live" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
+                <i class="fa-solid fa-qrcode text-emerald-400"></i> <span>Live QR</span>
             </button>
             <button onclick="switchTab('audit')" id="tab-btn-audit" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
-                <i class="fa-solid fa-clipboard-list"></i> <span>Audit Trail</span>
+                <i class="fa-solid fa-clipboard-list"></i> <span>Audit</span>
             </button>
             <button onclick="switchTab('watchlist')" id="tab-btn-watchlist" class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-slate-200">
                 <i class="fa-solid fa-shield-halved"></i> <span>Watchlist</span>
@@ -196,6 +200,62 @@
 
             </div>
 
+        </section>
+
+        
+        <!-- TAB: LIVE GPAY-STYLE QR SCANNER WINDOW -->
+        <section id="tab-qr-live" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-bolt text-emerald-400"></i> Live Aadhaar Secure QR Scanner
+                        </h2>
+                        <p class="text-xs text-slate-400">High-speed 60FPS continuous camera scanner with instant offline UIDAI RSA-2048 signature verification.</p>
+                    </div>
+                </div>
+
+                <!-- Live Camera Viewfinder -->
+                <div class="relative w-full max-w-md mx-auto aspect-square rounded-2xl overflow-hidden border-2 border-emerald-500/50 bg-slate-950 shadow-2xl shadow-emerald-500/10">
+                    <div id="qr-reader" class="w-full h-full"></div>
+                    <div id="qr-scanline" class="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_15px_#10B981] animate-pulse pointer-events-none" style="animation: scanline 2s ease-in-out infinite;"></div>
+                </div>
+
+                <!-- Camera Controls & Fallback Upload -->
+                <div class="max-w-md mx-auto mt-4 grid grid-cols-2 gap-3">
+                    <button id="btn-toggle-camera" onclick="toggleQrCamera()" class="py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-md">
+                        <i class="fa-solid fa-video"></i> <span id="camera-btn-text">Start Live Scanner</span>
+                    </button>
+                    <label class="cursor-pointer py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700">
+                        <i class="fa-solid fa-camera text-teal-400"></i>
+                        <span>Snap / Upload Photo</span>
+                        <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleDedicatedQrFile(event)">
+                    </label>
+                </div>
+            </div>
+
+            <!-- Live QR Verification Results Card -->
+            <div id="qr-results-card" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div class="flex items-center gap-2">
+                        <span id="qr-sig-badge" class="px-3 py-1 rounded-full text-xs font-bold font-mono bg-emerald-500 text-slate-950">UIDAI SIGNATURE VALID</span>
+                        <span class="text-xs text-slate-400 font-mono">Offline RSA-2048</span>
+                    </div>
+                    <button onclick="resetQrScanner()" class="text-xs text-slate-400 hover:text-white"><i class="fa-solid fa-arrows-rotate"></i> Scan Again</button>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-5 items-start">
+                    <!-- Extracted Photo -->
+                    <div id="qr-photo-container" class="w-28 h-36 rounded-xl border border-slate-800 bg-slate-950 overflow-hidden flex-shrink-0 flex items-center justify-center text-slate-600">
+                        <i class="fa-solid fa-user text-2xl"></i>
+                    </div>
+
+                    <!-- Decrypted Demographics -->
+                    <div class="flex-1 w-full space-y-2 text-xs" id="qr-demographics-list">
+                        <!-- Populated via JS -->
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- TAB 2: AUDIT TRAIL -->

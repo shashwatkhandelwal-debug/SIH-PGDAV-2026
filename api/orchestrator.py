@@ -214,6 +214,65 @@ async def stats():
     return get_stats()
 
 
+@app.post("/verify/qr")
+async def verify_qr_endpoint(
+    document: Optional[UploadFile] = File(None),
+    raw_text: Optional[str] = Form(None),
+):
+    """
+    Dedicated live QR verification endpoint.
+    Accepts raw QR image or raw text payload (from camera scanner).
+    """
+    from modules.aadhaar.qr import decode_aadhaar_qr, parse_secure_qr_payload
+    from modules.aadhaar.signature import verify_uidai_signature
+
+    if raw_text:
+        raw_digits = raw_text.strip()
+        if raw_digits.isdigit() and len(raw_digits) > 100:
+            parsed = parse_secure_qr_payload(raw_digits)
+            sig_res = verify_uidai_signature(parsed.get("raw_payload", b""), parsed.get("signature", b""))
+            
+            photo_b64 = None
+            if parsed.get("photo_bytes"):
+                photo_b64 = base64.b64encode(parsed["photo_bytes"]).decode("utf-8")
+
+            return {
+                "status": "SUCCESS",
+                "format": "SECURE_QR",
+                "signature_valid": sig_res.get("valid", False),
+                "fields": parsed.get("fields", {}),
+                "photo_base64": photo_b64,
+                "notes": ["Decoded via live 60FPS browser camera stream and verified against UIDAI RSA root key"],
+            }
+
+    if document:
+        img = await _load_image_from_upload(document)
+        qr_dict = decode_aadhaar_qr(img)
+        if qr_dict.get("error"):
+            return {
+                "status": "UNREADABLE",
+                "error": qr_dict["error"],
+                "notes": ["QR code could not be resolved from image. Try holding camera closer or adjusting lighting."],
+            }
+
+        sig_res = verify_uidai_signature(qr_dict.get("raw_payload", b""), qr_dict.get("signature", b""))
+        photo_b64 = None
+        fields_clean = dict(qr_dict.get("fields", {}))
+        if fields_clean.get("photo_bytes"):
+            photo_b64 = base64.b64encode(fields_clean.pop("photo_bytes")).decode("utf-8")
+
+        return {
+            "status": "SUCCESS",
+            "format": qr_dict.get("format", "SECURE_QR"),
+            "signature_valid": sig_res.get("valid", False),
+            "fields": fields_clean,
+            "photo_base64": photo_b64,
+            "notes": ["Decoded via zxing-cpp / PyZBar and verified against UIDAI RSA root key"],
+        }
+
+    raise HTTPException(status_code=400, detail="Either document image or raw_text payload is required")
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}

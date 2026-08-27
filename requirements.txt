@@ -13,6 +13,7 @@ Pillow>=10.3.0
 opencv-python-headless>=4.9.0
 
 # QR / Document parsing
+zxing-cpp>=3.1.0
 pyzbar>=0.1.9
 mrz>=0.2.0
 

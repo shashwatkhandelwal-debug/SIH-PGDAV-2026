@@ -50,14 +50,43 @@ def _detect_and_decode_qr(
     if image is None or image.size == 0:
         return None, None
 
-    def try_pyzbar(img_arr):
+    def try_decode(img_arr):
+        if img_arr is None or getattr(img_arr, "size", 0) == 0:
+            return None, None
+
+        # 1. Try zxing-cpp (Fast C++ Reed-Solomon engine for dense Version 14+ QR codes)
+        try:
+            import zxingcpp
+            res = zxingcpp.read_barcode(img_arr)
+            if res and res.format == zxingcpp.BarcodeFormat.QRCode:
+                raw_bytes = getattr(res, "bytes", None)
+                if not raw_bytes and hasattr(res, "text") and res.text:
+                    raw_bytes = res.text.encode("utf-8", errors="replace")
+                if raw_bytes:
+                    reg = None
+                    if hasattr(res, "position"):
+                        try:
+                            pos = res.position
+                            reg = (
+                                min(pos.top_left.x, pos.bottom_left.x),
+                                min(pos.top_left.y, pos.top_right.y),
+                                max(pos.bottom_right.x, pos.top_right.x),
+                                max(pos.bottom_right.y, pos.bottom_left.y),
+                            )
+                        except Exception:
+                            pass
+                    return bytes(raw_bytes), reg
+        except Exception:
+            pass
+
+        # 2. Try PyZBar
         try:
             if isinstance(img_arr, np.ndarray):
                 if len(img_arr.shape) == 2:
                     pil_img = Image.fromarray(img_arr)
-                elif img_arr.shape[2] == 3:
+                elif len(img_arr.shape) == 3 and img_arr.shape[2] == 3:
                     pil_img = Image.fromarray(cv2.cvtColor(img_arr, cv2.COLOR_BGR2RGB))
-                elif img_arr.shape[2] == 4:
+                elif len(img_arr.shape) == 3 and img_arr.shape[2] == 4:
                     pil_img = Image.fromarray(cv2.cvtColor(img_arr, cv2.COLOR_BGRA2RGB))
                 else:
                     pil_img = Image.fromarray(img_arr)
@@ -71,40 +100,41 @@ def _detect_and_decode_qr(
                     return obj.data, reg
         except Exception:
             pass
+
         return None, None
 
     # Step 1: Direct full image passes
-    data, reg = try_pyzbar(image)
+    data, reg = try_decode(image)
     if data:
         return data, reg
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image.copy()
-    data, reg = try_pyzbar(gray)
+    data, reg = try_decode(gray)
     if data:
         return data, reg
 
     # Filters on full image
     clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
-    data, reg = try_pyzbar(enhanced)
+    data, reg = try_decode(enhanced)
     if data:
         return data, reg
 
     # Sharpening filter
     sharp_kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
     sharpened = cv2.filter2D(enhanced, -1, sharp_kernel)
-    data, reg = try_pyzbar(sharpened)
+    data, reg = try_decode(sharpened)
     if data:
         return data, reg
 
     # Otsu & Adaptive
     _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-    data, reg = try_pyzbar(otsu)
+    data, reg = try_decode(otsu)
     if data:
         return data, reg
 
     adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 51, 11)
-    data, reg = try_pyzbar(adaptive)
+    data, reg = try_decode(adaptive)
     if data:
         return data, reg
 
@@ -127,7 +157,7 @@ def _detect_and_decode_qr(
             continue
         
         # Test crop directly
-        data, sub_reg = try_pyzbar(crop_gray)
+        data, sub_reg = try_decode(crop_gray)
         if data:
             abs_reg = (x1 + sub_reg[0], y1 + sub_reg[1], x1 + sub_reg[2], y1 + sub_reg[3]) if sub_reg else (x1, y1, x2, y2)
             return data, abs_reg
@@ -138,30 +168,30 @@ def _detect_and_decode_qr(
         if max(ch, cw) < 1400:
             scale = 1400.0 / float(max(ch, cw))
             upscaled = cv2.resize(crop_enh, (int(cw * scale), int(ch * scale)), interpolation=cv2.INTER_CUBIC)
-            data, _ = try_pyzbar(upscaled)
+            data, _ = try_decode(upscaled)
             if data:
                 return data, (x1, y1, x2, y2)
 
             # Test Otsu on upscaled crop
             _, crop_otsu = cv2.threshold(upscaled, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-            data, _ = try_pyzbar(crop_otsu)
+            data, _ = try_decode(crop_otsu)
             if data:
                 return data, (x1, y1, x2, y2)
 
             # Test Sharpening on upscaled crop
             crop_sharp = cv2.filter2D(upscaled, -1, sharp_kernel)
-            data, _ = try_pyzbar(crop_sharp)
+            data, _ = try_decode(crop_sharp)
             if data:
                 return data, (x1, y1, x2, y2)
 
     # Step 3: Rotation sweeps (90 deg, 180 deg, 270 deg) for phone camera orientations
     for rot in [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180, cv2.ROTATE_90_COUNTERCLOCKWISE]:
         rot_img = cv2.rotate(gray, rot)
-        data, _ = try_pyzbar(rot_img)
+        data, _ = try_decode(rot_img)
         if data:
             return data, (0, 0, w, h)
         rot_enh = clahe.apply(rot_img)
-        data, _ = try_pyzbar(rot_enh)
+        data, _ = try_decode(rot_enh)
         if data:
             return data, (0, 0, w, h)
 
