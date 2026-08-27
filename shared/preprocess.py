@@ -76,24 +76,35 @@ def correct_perspective(
     return warped
 
 
-def enhance_and_deblur_document(image: np.ndarray) -> np.ndarray:
+def enhance_and_deblur_document(image: np.ndarray, max_dim: int = 1280) -> np.ndarray:
     """
-    Enhance low-resolution or slightly blurry document captures:
-    1. Upscales small browser frames (< 1200px) using cubic interpolation.
-    2. Applies LAB-space CLAHE to normalize lighting and remove camera glare.
-    3. Uses unsharp masking with Gaussian blur difference to sharpen fine text and QR edges.
+    Enhance and memory-normalize document captures for lightning-fast OCR and zero OOM crashes:
+    1. Resizes large smartphone camera photos (> 1280px) and upscales tiny frames (< 800px).
+    2. Converts to 3-channel BGR.
+    3. Applies LAB-space CLAHE to remove glare and shadow gradients.
+    4. Uses unsharp masking to sharpen text edges and QR grid lines.
     """
     if image is None or getattr(image, "size", 0) == 0:
         return image
 
-    h, w = image.shape[:2]
-    # Upscale if low resolution browser video frame
-    if w < 1200:
-        scale = 1200.0 / float(w)
-        image = cv2.resize(image, (1200, int(h * scale)), interpolation=cv2.INTER_CUBIC)
+    # Ensure 3-channel BGR
+    img = image.copy()
+    if len(img.shape) == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    elif len(img.shape) == 3 and img.shape[2] == 4:
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+    h, w = img.shape[:2]
+    # Memory and speed optimization: clamp to max_dim (1280px) to prevent PyTorch 2GB OOM on cloud
+    if max(h, w) > max_dim:
+        scale = max_dim / float(max(h, w))
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    elif max(h, w) < 800:
+        scale = 800.0 / float(max(h, w))
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
 
     # Convert to LAB for luminance-only contrast enhancement
-    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     l_enhanced = clahe.apply(l)
