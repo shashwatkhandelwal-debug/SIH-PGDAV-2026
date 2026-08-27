@@ -41,6 +41,43 @@ def _clean_corrupt_easyocr_models():
         pass
 
 
+import cv2
+
+
+def _preprocess_for_ocr(image: np.ndarray) -> np.ndarray:
+    """Multi-stage contrast, scaling and edge enhancement for OCR."""
+    if image is None or image.size == 0:
+        return image
+
+    if len(image.shape) == 2:
+        img = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    else:
+        img = image.copy()
+
+    h, w = img.shape[:2]
+    target_w = 1280
+    if w > 0 and w != target_w:
+        scale = target_w / float(w)
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        img = cv2.resize(
+            img,
+            (new_w, new_h),
+            interpolation=cv2.INTER_CUBIC if scale > 1.0 else cv2.INTER_AREA,
+        )
+
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    l_enhanced = clahe.apply(l)
+    enhanced_lab = cv2.merge((l_enhanced, a, b))
+    enhanced_bgr = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
+
+    gaussian = cv2.GaussianBlur(enhanced_bgr, (0, 0), 2.0)
+    unsharp = cv2.addWeighted(enhanced_bgr, 1.4, gaussian, -0.4, 0)
+    return unsharp
+
+
 def _get_reader() -> easyocr.Reader:
     global _reader
     if _reader is None:
@@ -52,19 +89,22 @@ def _get_reader() -> easyocr.Reader:
     return _reader
 
 
-def extract_viz_fields(image: np.ndarray) -> dict:
+def extract_viz_fields(image: np.ndarray, reader: Optional[easyocr.Reader] = None) -> dict:
     """
     Extract VIZ fields from a passport biographical page image.
 
     Args:
-        image: BGR numpy array of the passport bio page (perspective-corrected).
+        image: BGR numpy array of the passport bio page.
+        reader: Optional EasyOCR reader instance.
 
     Returns:
         dict with keys: surname, given_names, dob, doi, doe, pob,
                         passport_number, nationality, raw_text, confidence
     """
-    reader = _get_reader()
-    results = reader.readtext(image, detail=1)
+    if reader is None:
+        reader = _get_reader()
+    enhanced = _preprocess_for_ocr(image)
+    results = reader.readtext(enhanced, detail=1)
     raw_text = "\n".join([r[1] for r in results])
     confidences = [r[2] for r in results]
     avg_conf = float(np.mean(confidences)) if confidences else 0.0
