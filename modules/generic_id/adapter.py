@@ -90,24 +90,58 @@ def extract_generic_id_fields(image: np.ndarray, reader=None) -> dict:
 
 
 def _extract_id_number(lines: list, full_text: str) -> Optional[str]:
-    m_epic = re.search(r"\b([A-Z]{3}\d{7})\b", full_text)
-    if m_epic:
-        return m_epic.group(1)
-    
+    # Pattern 1: Modern 10-char EPIC (3 letters + 7 digits, e.g. TDF1928374 or TDF 1928374)
+    m = re.search(r"\b([A-Z]{3})\s*(\d{7})\b", full_text.upper())
+    if m:
+        return m.group(1) + m.group(2)
+
+    # Pattern 2: Old 4-part state format (e.g. DL/01/001/012345 or WB/01/001/000123)
+    m = re.search(r"\b([A-Z]{2}\s*\/\s*\d{1,3}\s*\/\s*\d{1,4}\s*\/\s*\d{4,7})\b", full_text.upper())
+    if m:
+        return re.sub(r"\s+", "", m.group(1))
+
+    # Pattern 3: Fallback 2-4 letters + 6-8 digits excluding common header words
+    EXCLUDE = {
+        "IDENTITY", "ELECTION", "COMMISSION", "GOVERNMENT", "NATIONAL",
+        "CARD", "INDIA", "ELECTOR", "ELECTORS", "VOTER", "FATHER", "REPUBLIC"
+    }
     for line in lines:
-        if "NO" in line.upper() or "ID" in line.upper() or "CARD" in line.upper():
-            m = re.search(r"\b([A-Z0-9-]{6,16})\b", line)
-            if m:
-                return m.group(1)
+        for token in re.findall(r"\b[A-Z0-9/-]{6,16}\b", line.upper()):
+            if token in EXCLUDE:
+                continue
+            # Must contain both letters and digits
+            if re.search(r"[A-Z]", token) and re.search(r"\d", token):
+                return token
     return None
 
 
 def _extract_name(lines: list) -> Optional[str]:
-    EXCLUDE = {"ELECTION", "COMMISSION", "IDENTITY", "CARD", "GOVERNMENT", "NATIONAL", "REPUBLIC", "CITIZEN"}
+    EXCLUDE = {
+        "ELECTION", "COMMISSION", "IDENTITY", "CARD", "GOVERNMENT", "NATIONAL",
+        "REPUBLIC", "CITIZEN", "INDIA", "BHARAT", "FATHER", "HUSBAND", "MOTHER",
+        "SEX", "AGE", "DOB", "ADDRESS", "MALE", "FEMALE", "PHOTO"
+    }
+    
+    # 1. Search for explicit 'Name' / 'Elector Name' prefix
     for line in lines:
-        words = [w.upper() for w in re.findall(r"[A-Za-z]+", line)]
-        if len(words) >= 2 and not any(w in EXCLUDE for w in words):
-            return line.strip()
+        m = re.search(r"(?:NAME|ELECTOR[\'S]*\s*NAME|ELECTOR)\s*[:\-\s]+\s*([A-Za-z\s\.]+)", line, re.IGNORECASE)
+        if m:
+            cand = re.sub(r"[^A-Za-z\s]", "", m.group(1)).strip()
+            words = cand.split()
+            if len(words) >= 1 and all(len(w) >= 2 for w in words):
+                return cand
+
+    # 2. Search clean alphabetic lines (reject noise symbols/Devanagari OCR artifacts)
+    for line in lines:
+        clean_letters = re.findall(r"[A-Za-z]", line)
+        if len(clean_letters) < 4:
+            continue
+        ratio = len(clean_letters) / max(1, len(line.strip()))
+        if ratio < 0.75:  # Skip noisy non-Latin artifact lines
+            continue
+        words = [w for w in re.findall(r"[A-Za-z]+", line) if len(w) >= 2]
+        if len(words) >= 2 and not any(w.upper() in EXCLUDE for w in words):
+            return " ".join(words)
     return None
 
 
@@ -116,4 +150,8 @@ def _extract_date(text: str, keywords: list) -> Optional[str]:
         m = re.search(rf"(?:{kw})[:\s]+(\d{{2}}[\/\-\.]\d{{2}}[\/\-\.]\d{{4}})", text, re.IGNORECASE)
         if m:
             return m.group(1)
+    # Generic date fallback
+    m = re.search(r"\b(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})\b", text)
+    if m:
+        return m.group(1)
     return None
