@@ -1,7 +1,7 @@
 {
-  "name": "SSB Border Document Screener",
-  "short_name": "SSB Screener",
-  "description": "AI-Based Fake Identity and Border Document Screening System (MHA / SSB)",
+  "name": "VAJRA - AI Document Screening Engine",
+  "short_name": "VAJRA",
+  "description": "VAJRA: AI-Based Fake Identity and Border Document Screening System (MHA / SSB)",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
