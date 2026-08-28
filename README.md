@@ -1,4 +1,4 @@
-# VAJRA: AI-Based Fake Identity & Document Screening System
+# SSB-VAJRA: AI-Based Fake Identity & Document Screening System
 ### Smart India Hackathon | Problem Statement ID: 26188
 **Organization**: Ministry of Home Affairs (MHA)  
 **Department**: Sashastra Seema Bal (SSB), Police II Division  
