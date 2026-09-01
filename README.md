@@ -269,4 +269,4 @@ python -m spacy download en_core_web_sm
 uvicorn api.orchestrator:app --host 0.0.0.0 --port 8000
 ```
 
-Access dashboard on any smartphone, tablet, or workstation browser at `http://<YOUR_LOCAL_IP>:8000`.
+Access dashboard on any smartphone, tablet, or workstation browser at `http://<YOUR_LOCAL_IP>:8000`
