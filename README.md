@@ -7,7 +7,7 @@
 
 ---
 
-## 🎯 Executive Overview
+##  Executive Overview
 
 An AI-powered border document screening platform engineered for **high-throughput land border checkpoints** (such as Indo-Nepal and Indo-Bhutan border posts). The platform provides automated optical character recognition, digital cryptography verification, pixel-level tampering heuristics, and sovereign face biometric matching to assist border security personnel in rapid decision triage.
 
@@ -15,7 +15,7 @@ The system is designed as an **Officer Decision Support System (Level-1 Triage)*
 
 ---
 
-## 📊 Implementation Status & Roadmap
+## Implementation Status & Roadmap
 
 | Feature / Subsystem | Status | Technical Notes |
 | :--- | :--- | :--- |
@@ -39,7 +39,7 @@ The system is designed as an **Officer Decision Support System (Level-1 Triage)*
 
 ---
 
-## 🏛️ Tiered Verification Design: Cryptographic vs Optical
+## Tiered Verification Design: Cryptographic vs Optical
 
 To prevent worn, sun-damaged, or legitimately aged documents from being falsely penalized as forgeries, the system implements a strict **two-tier architecture**:
 
@@ -60,7 +60,7 @@ To prevent worn, sun-damaged, or legitimately aged documents from being falsely 
 
 ---
 
-## 📑 Supported Documents Matrix
+## Supported Documents Matrix
 
 | Document | Module 1: OCR Extraction | Module 2: Document Validation | Module 3: Tampering Detection | Module 4: Face Biometrics |
 | :--- | :--- | :--- | :--- | :--- |
@@ -73,9 +73,9 @@ To prevent worn, sun-damaged, or legitimately aged documents from being falsely 
 
 ---
 
-## 🔍 Deep Technical Breakdown by Module
+##  Deep Technical Breakdown by Module
 
-### 🔤 Module 1: OCR Extraction & Deep Decoding Pipeline
+### Module 1: OCR Extraction & Deep Decoding Pipeline
 
 ```
 [Document Input] ──► Preprocessing (CLAHE + Otsu) ──► Multi-Engine OCR / C++ Matrix Engine ──► Structured JSON Schema
@@ -94,7 +94,7 @@ To prevent worn, sun-damaged, or legitimately aged documents from being falsely 
 
 ---
 
-### 🛡️ Module 2: Document Validation & Cryptographic Verification
+### Module 2: Document Validation & Cryptographic Verification
 
 ```
 [Extracted Demographics] ──► Cryptographic & Checksum Math ──► Cross-Field Consistency ──► Rule Engine Verdict
@@ -121,7 +121,7 @@ To prevent worn, sun-damaged, or legitimately aged documents from being falsely 
 
 ---
 
-### 🔬 Module 3: Tampering Detection & Pixel Forensics (Core AI Innovation)
+### Module 3: Tampering Detection & Pixel Forensics (Core AI Innovation)
 
 ```
 [Raw Document Image] ──► JPEG Re-compression (Q=95) ──► Error Level Analysis (ELA) ──► EXIF Sensor Audit ──► Forensic Heatmap
@@ -143,7 +143,7 @@ To prevent worn, sun-damaged, or legitimately aged documents from being falsely 
 
 ---
 
-### 👤 Module 4: Sovereign Edge Face Biometrics & Bounded 1:W Watchlist Search
+### Module 4: Sovereign Edge Face Biometrics & Bounded 1:W Watchlist Search
 
 ```
 [Document Photo] ──► ArcFace ResNet-50 (512-D Vector) ──┐
@@ -178,7 +178,7 @@ To prevent worn, sun-damaged, or legitimately aged documents from being falsely 
 
 ---
 
-### ⚖️ Module 5: Decision Orchestration, Explainable Scoring & Audit Logging
+### Module 5: Decision Orchestration, Explainable Scoring & Audit Logging
 
 1. **Deterministic 0 to 100 Risk Score Formula**:
    $$\text{Risk Score} = 30 \times (\text{Checksum Fail}) + 30 \times (\text{Signature Fail}) + 20 \times (\text{Cross-Field Inconsistency}) + 20 \times (\text{ELA Tampering})$$
@@ -186,9 +186,9 @@ To prevent worn, sun-damaged, or legitimately aged documents from being falsely 
    - **Watchlist / Blacklist Hit**: Automatic **100 / 100 FLAGGED (THREAT)**.
    - **Face Biometric Mismatch ($< 45\%$)**: Automatic **+40 pts Penalty**.
 3. **Tiers & Verdicts**:
-   - `0 - 30 pts` $\to$ **`CLEAR (PASSED)`** 🟢
-   - `31 - 69 pts` $\to$ **`REVIEW (SUSPICIOUS)`** 🟡
-   - `70 - 100 pts` $\to$ **`FLAGGED (THREAT)`** 🔴
+   - `0 - 30 pts` $\to$ **`CLEAR (PASSED)`** 
+   - `31 - 69 pts` $\to$ **`REVIEW (SUSPICIOUS)`** 
+   - `70 - 100 pts` $\to$ **`FLAGGED (THREAT)`** 
 4. **Natural Language LLM Officer Summary**:
    - Translates complex cryptographic and pixel metrics into plain-language actionable briefs for border officers.
    - Strictly grounded on underlying JSON values without the capability to hallucinate or modify calculated risk scores.
@@ -198,7 +198,7 @@ To prevent worn, sun-damaged, or legitimately aged documents from being falsely 
 
 ---
 
-## ⚠️ Known Limitations & Design Boundaries
+## Known Limitations & Design Boundaries
 
 This software is an **academic prototype and engineering Proof-of-Concept (PoC)** developed for the Smart India Hackathon. It is not currently deployed border infrastructure. The following limitations are explicitly documented:
 
@@ -215,7 +215,7 @@ This software is an **academic prototype and engineering Proof-of-Concept (PoC)*
 
 ---
 
-## ⚖️ Legal & Privacy Considerations (DPDP Act 2023)
+## Legal & Privacy Considerations (DPDP Act 2023)
 
 * **Processing Scope**: While national security and law enforcement agencies carry specific statutory processing exemptions under Section 17 of the Digital Personal Data Protection (DPDP) Act 2023 for border control and crime prevention, this platform independently enforces strict **Data Minimization Principles**:
   * **Zero Raw Image Retention**: Document scans and live selfies are held in volatile RAM only during active inference and are not persistently written to disk.
@@ -225,7 +225,7 @@ This software is an **academic prototype and engineering Proof-of-Concept (PoC)*
 
 ---
 
-## 🏗️ System Architecture & Codebase Map
+## System Architecture & Codebase Map
 
 ```
 SIH-PGDAV-2026/
@@ -249,7 +249,7 @@ SIH-PGDAV-2026/
 
 ---
 
-## ⚡ Quickstart & Deployment
+## Quickstart & Deployment
 
 ```bash
 # 1. Clone repository
